@@ -5,22 +5,23 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WiFi Analyzer</title>
   <style>
-    body { font-family: system-ui, sans-serif; background:#121212; color:#fff; padding:20px; max-width:720px; margin:0 auto; }
-    .card { background:#1e1e1e; border-radius:14px; padding:20px; margin-bottom:20px; }
-    button { background:#4fc3f7; color:#121212; border:none; padding:12px 20px; font-size:15px; font-weight:600; border-radius:10px; cursor:pointer; }
-    button.secondary { background:#333; color:#ccc; }
+    body { font-family: system-ui, sans-serif; background: #121212; color: #fff; padding: 20px; max-width: 720px; margin: 0 auto; }
+    .card { background: #1e1e1e; border-radius: 14px; padding: 20px; margin-bottom: 20px; }
+    button { background: #4fc3f7; color: #121212; border: none; padding: 14px 24px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer; }
+    button.secondary { background: #333; color: #ccc; }
+    .error { background: #3a1a1a; color: #ff8a80; padding: 12px; border-radius: 8px; margin-top: 12px; white-space: pre-wrap; font-family: monospace; font-size: 13px; }
   </style>
 </head>
 <body>
   <h1 style="color:#4fc3f7">WiFi Analyzer</h1>
-  <p style="color:#888">Phases 2-4 Demo • Export + Survey Mode</p>
+  <p style="color:#888">Phases 2-4 Demo</p>
 
   <div class="card">
     <button id="scanBtn" style="width:100%; padding:16px; font-size:17px;">Scan WiFi Now</button>
     <div id="resultArea" style="margin-top:20px;"></div>
 
     <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
-      <button id="exportBtn" class="secondary">Export Report (JSON)</button>
+      <button id="exportBtn" class="secondary">Export Report</button>
       <button id="surveyBtn" class="secondary">Start Survey Mode</button>
     </div>
   </div>
@@ -30,9 +31,11 @@
     <div id="historyArea"></div>
   </div>
 
+  <div id="errorBox" class="error" style="display:none;"></div>
+
   <script type="module">
     import { analyzeScan } from './js/wifi-analyzer.js';
-    import { saveScan, getScanHistory, clearHistory } from './js/wifi-storage.js';
+    import { saveScan, getScanHistory } from './js/wifi-storage.js';
     import { renderScanResult, renderHistory, exportScanReport, startSurveyMode, stopSurveyMode } from './js/ui-wifi.js';
 
     let currentScan = null;
@@ -41,28 +44,67 @@
 
     const resultArea = document.getElementById('resultArea');
     const historyArea = document.getElementById('historyArea');
+    const errorBox = document.getElementById('errorBox');
     const scanBtn = document.getElementById('scanBtn');
     const exportBtn = document.getElementById('exportBtn');
     const surveyBtn = document.getElementById('surveyBtn');
 
-    function refreshHistory() {
-      renderHistory(historyArea, getScanHistory());
+    function showError(msg) {
+      errorBox.style.display = 'block';
+      errorBox.textContent = msg;
     }
 
-    function doScan() {
-      // Generate varied mock data
-      const mock = {
-        timestamp: Date.now(),
-        currentNetwork: { ssid: "DemoNet-5G", bssid: "AA:BB:CC:12:34:56", signalStrength: -58, frequency: 5745, channel: 149, band: "5", channelWidth: 80, security: "WPA3", isConnected: true },
-        nearbyNetworks: Array.from({length: 9}, (_,i) => ({ ssid: `Neighbor${i}`, signalStrength: -48 -i*3, channel: i % 3 === 0 ? 149 : 36, band: "5", security: "WPA2" }))
-      };
+    function refreshHistory() {
+      try {
+        renderHistory(historyArea, getScanHistory());
+      } catch (e) {
+        console.error(e);
+      }
+    }
 
-      currentAnalysis = analyzeScan(mock);
-      currentScan = mock;
+    async function doScan() {
+      try {
+        errorBox.style.display = 'none';
+        scanBtn.disabled = true;
+        scanBtn.textContent = 'Scanning...';
 
-      renderScanResult(resultArea, mock, currentAnalysis);
-      saveScan(mock, currentAnalysis);
-      refreshHistory();
+        // Build mock data
+        const mock = {
+          timestamp: Date.now(),
+          currentNetwork: {
+            ssid: "DemoNet-5G",
+            bssid: "AA:BB:CC:12:34:56",
+            signalStrength: -58,
+            frequency: 5745,
+            channel: 149,
+            band: "5",
+            channelWidth: 80,
+            security: "WPA3",
+            isConnected: true
+          },
+          nearbyNetworks: Array.from({ length: 8 }, (_, i) => ({
+            ssid: `Neighbor${i}`,
+            signalStrength: -48 - (i * 3),
+            channel: 36,
+            band: "5",
+            security: "WPA2"
+          }))
+        };
+
+        currentAnalysis = analyzeScan(mock);
+        currentScan = mock;
+
+        renderScanResult(resultArea, mock, currentAnalysis);
+        saveScan(mock, currentAnalysis);
+        refreshHistory();
+
+      } catch (err) {
+        showError('Error running scan:\n' + err.message + '\n\nTip: Try running a local server (see below) or use the Android app.');
+        console.error(err);
+      } finally {
+        scanBtn.disabled = false;
+        scanBtn.textContent = 'Scan WiFi Now';
+      }
     }
 
     scanBtn.addEventListener('click', doScan);
@@ -71,7 +113,7 @@
       if (currentScan && currentAnalysis) {
         exportScanReport(currentScan, currentAnalysis);
       } else {
-        alert('Run a scan first');
+        alert('Please run a scan first');
       }
     });
 
@@ -85,13 +127,23 @@
         surveyBtn.textContent = 'Stop Survey Mode';
         surveyBtn.style.background = '#c62828';
         surveyInterval = startSurveyMode((sample) => {
-          console.log('Survey sample:', sample);
-          // In real app this would update a live graph
+          console.log('[Survey] Sample:', sample);
         });
       }
     });
 
+    // Initial load
     refreshHistory();
+
+    // Helpful message
+    resultArea.innerHTML = '<div style="color:#666; padding:8px 0;">Click "Scan WiFi Now" to test the analysis engine.</div>';
   </script>
+
+  <div style="margin-top:30px; font-size:13px; color:#666; line-height:1.5;">
+    <strong>Note:</strong> If the button still does nothing, your browser is blocking ES module imports because you're opening the file directly.<br><br>
+    <strong>Recommended fix:</strong> Run this command in PowerShell from the wifi-analyzer folder:<br>
+    <code style="background:#222; padding:4px 8px; border-radius:4px;">npx serve www</code><br>
+    Then open <strong>http://localhost:3000</strong> in your browser.
+  </div>
 </body>
 </html>
