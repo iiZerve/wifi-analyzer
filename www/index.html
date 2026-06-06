@@ -8,49 +8,56 @@
     body { font-family: system-ui, sans-serif; background:#0f0f0f; color:#fff; padding:16px; max-width:720px; margin:0 auto; }
     h1 { color:#4fc3f7; }
     .card { background:#1a1a1a; border-radius:16px; padding:20px; margin-bottom:20px; }
-    button { background:#4fc3f7; color:#0f0f0f; border:none; padding:14px 24px; font-size:16px; font-weight:700; border-radius:12px; cursor:pointer; width:100%; }
+    button { background:#4fc3f7; color:#0f0f0f; border:none; padding:14px 24px; font-size:16px; font-weight:700; border-radius:12px; cursor:pointer; }
     button.secondary { background:#333; color:#ccc; font-weight:600; }
-    .section-title { font-size:13px; color:#888; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px; }
+    .freshness { font-size:12px; color:#888; margin-top:4px; }
+    .survey-active { background:#1f3a1f; }
   </style>
 </head>
 <body>
   <h1>WiFi Analyzer</h1>
-  <p style="color:#888; margin-bottom:24px;">Real WiFi Analysis • No Mock Data</p>
+  <p style="color:#888; margin-bottom:20px;">Real-time • No mock data</p>
 
   <div class="card">
-    <button id="scanBtn">Scan Real WiFi Environment</button>
-    <div id="resultArea" style="margin-top:24px;"></div>
+    <button id="scanBtn">Scan Real WiFi</button>
+    <div id="lastScanInfo" class="freshness" style="margin-top:8px; text-align:center;"></div>
+    <div id="resultArea" style="margin-top:20px;"></div>
   </div>
 
   <div class="card">
-    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-      <button id="exportBtn" class="secondary" style="flex:1;">Export Report</button>
-      <button id="surveyBtn" class="secondary" style="flex:1;">Start Path Survey</button>
-    </div>
-    <div id="surveyResults" style="margin-top:12px;"></div>
+    <button id="surveyBtn" class="secondary">Start Walking Survey</button>
+    <div id="surveyResults" style="margin-top:16px;"></div>
   </div>
 
   <div class="card">
-    <div class="section-title">Recent Real Scans</div>
+    <div style="font-size:13px; color:#888; margin-bottom:10px;">Recent Real Scans</div>
     <div id="historyArea"></div>
   </div>
 
   <script type="module">
     import { analyzeScan } from './js/wifi-analyzer.js';
     import { saveScan, getScanHistory } from './js/wifi-storage.js';
-    import { renderScanResult, renderHistory, exportScanReport, startSurveyMode, stopSurveyMode } from './js/ui-wifi.js';
+    import { renderScanResult, renderHistory, exportScanReport } from './js/ui-wifi.js';
     import { scanWifi } from './js/wifi-scanner.js';
 
     let currentScan = null;
     let currentAnalysis = null;
     let surveyInterval = null;
+    let surveyScans = [];
 
     const resultArea = document.getElementById('resultArea');
     const historyArea = document.getElementById('historyArea');
     const surveyResults = document.getElementById('surveyResults');
     const scanBtn = document.getElementById('scanBtn');
-    const exportBtn = document.getElementById('exportBtn');
     const surveyBtn = document.getElementById('surveyBtn');
+    const lastScanInfo = document.getElementById('lastScanInfo');
+
+    function updateLastScanTime() {
+      if (currentScan && currentScan.timestamp) {
+        const secondsAgo = Math.floor((Date.now() - currentScan.timestamp) / 1000);
+        lastScanInfo.innerHTML = `Last scan: ${secondsAgo}s ago • Freshness: ${secondsAgo < 15 ? 'Good' : 'Stale'}`;
+      }
+    }
 
     function refreshHistory() {
       renderHistory(historyArea, getScanHistory());
@@ -58,49 +65,79 @@
 
     async function doRealScan() {
       scanBtn.disabled = true;
-      scanBtn.textContent = 'Scanning real environment...';
+      scanBtn.textContent = 'Scanning...';
 
       try {
-        // Only use real native scanning - no mock fallback in production flow
         const scanResult = await scanWifi();
-
         currentAnalysis = analyzeScan(scanResult);
         currentScan = scanResult;
 
         renderScanResult(resultArea, scanResult, currentAnalysis);
         saveScan(scanResult, currentAnalysis);
         refreshHistory();
+        updateLastScanTime();
+
+        // Auto-refresh freshness every 5 seconds
+        setTimeout(updateLastScanTime, 5000);
 
       } catch (err) {
-        resultArea.innerHTML = `
-          <div style="background:#2a1515; color:#ff8a80; padding:16px; border-radius:12px;">
-            <strong>Real scan failed</strong><br>
-            ${err.message}<br><br>
-            <small>Make sure you are running the Android app and have granted Location permission.</small>
-          </div>`;
+        resultArea.innerHTML = `<div style="background:#2a1515;color:#ff8a80;padding:16px;border-radius:12px;">
+          Real scan failed: ${err.message}
+        </div>`;
       } finally {
         scanBtn.disabled = false;
-        scanBtn.textContent = 'Scan Real WiFi Environment';
+        scanBtn.textContent = 'Scan Real WiFi';
       }
     }
 
     scanBtn.addEventListener('click', doRealScan);
 
-    exportBtn.addEventListener('click', () => {
-      if (currentScan && currentAnalysis) {
-        exportScanReport(currentScan, currentAnalysis);
+    // === Walking Survey Mode (Phase 1) ===
+    surveyBtn.addEventListener('click', async () => {
+      if (surveyInterval) {
+        // Stop survey
+        clearInterval(surveyInterval);
+        surveyInterval = null;
+        surveyBtn.textContent = 'Start Walking Survey';
+        surveyBtn.style.background = '#333';
+
+        const summary = `Survey complete. ${surveyScans.length} real scans recorded.`;
+        surveyResults.innerHTML = `<div style="background:#1f2a1f;padding:16px;border-radius:12px;">
+          <strong>${summary}</strong><br>
+          <small>Feature will expand with movement tracking &amp; recommendations.</small>
+        </div>`;
+        surveyScans = [];
       } else {
-        alert('Run a real scan first');
+        // Start survey
+        surveyScans = [];
+        surveyResults.innerHTML = '<div style="color:#4fc3f7;">Walking Survey active. Performing real scans every 5 seconds...</div>';
+        surveyBtn.textContent = 'Stop Walking Survey';
+        surveyBtn.style.background = '#c62828';
+
+        // Perform first scan immediately
+        try {
+          const first = await scanWifi();
+          surveyScans.push(first);
+          renderScanResult(resultArea, first, analyzeScan(first));
+        } catch(e) {}
+
+        surveyInterval = setInterval(async () => {
+          try {
+            const newScan = await scanWifi();
+            surveyScans.push(newScan);
+            renderScanResult(resultArea, newScan, analyzeScan(newScan));
+            // Update freshness
+            currentScan = newScan;
+            updateLastScanTime();
+          } catch(e) {
+            console.warn('Survey scan failed', e);
+          }
+        }, 5000);
       }
     });
 
-    surveyBtn.addEventListener('click', () => {
-      alert('Path Survey mode is under development. It will use real repeated scans while you walk.');
-      // Future: Will use real repeated scanWifi() calls + motion sensors
-    });
-
     refreshHistory();
-    resultArea.innerHTML = '<div style="text-align:center; color:#666; padding:30px 10px;">Tap the button to perform a real WiFi scan using your device.</div>';
+    resultArea.innerHTML = '<div style="text-align:center;color:#666;padding:30px 10px;">Tap Scan or start a Walking Survey using real scans.</div>';
   </script>
 </body>
 </html>
