@@ -5,114 +5,127 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WiFi Analyzer - Demo</title>
   <style>
-    body {
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #121212;
-      color: #fff;
-      padding: 24px;
-      max-width: 600px;
-      margin: 0 auto;
-    }
-    h1 { color: #4fc3f7; margin-bottom: 8px; }
-    .card {
-      background: #1e1e1e;
-      border-radius: 12px;
-      padding: 20px;
-      margin-bottom: 20px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-    }
-    button {
-      background: #4fc3f7;
-      color: #121212;
-      border: none;
-      padding: 12px 24px;
-      font-size: 16px;
-      font-weight: 600;
-      border-radius: 8px;
-      cursor: pointer;
-      margin-top: 12px;
-    }
+    body { font-family: system-ui, sans-serif; background: #121212; color: #fff; padding: 24px; max-width: 620px; margin: 0 auto; }
+    h1 { color: #4fc3f7; }
+    .card { background: #1e1e1e; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+    button { background: #4fc3f7; color: #121212; border: none; padding: 14px 28px; font-size: 16px; font-weight: 600; border-radius: 8px; cursor: pointer; }
     button:hover { background: #29b6f6; }
-    .result {
-      background: #2a2a2a;
-      padding: 16px;
-      border-radius: 8px;
-      white-space: pre-wrap;
-      font-family: monospace;
-      font-size: 14px;
-      margin-top: 16px;
-      display: none;
-    }
-    .status {
-      color: #4fc3f7;
-      font-weight: 500;
-    }
+    .result { background: #2a2a2a; padding: 16px; border-radius: 8px; margin-top: 16px; white-space: pre-wrap; font-family: monospace; font-size: 14px; display: none; }
+    .warning { background: #3a2a00; color: #ffcc80; padding: 12px; border-radius: 8px; font-size: 14px; }
   </style>
 </head>
 <body>
   <h1>WiFi Analyzer</h1>
-  <p style="color:#aaa; margin-bottom:24px;">Phase 1 Demo • Browser Test Mode</p>
+  <p style="color:#888">Phase 1 Demo • Fully Self-Contained</p>
 
   <div class="card">
-    <h3 style="margin-top:0;">Browser Mock Test</h3>
-    <p>This uses fake data so you can test the analysis engine without Android.</p>
+    <h3>Browser Test (Mock Data)</h3>
+    <p>This version works when you just double-click the HTML file. No server needed.</p>
     <button id="testBtn">Run Test Scan (Mock Data)</button>
-    
     <div id="resultBox" class="result"></div>
   </div>
 
+  <div class="card warning">
+    <strong>Important:</strong> The browser demo has limitations due to how browsers handle local files.<br><br>
+    <strong>Recommended:</strong> Run the commands below to test with <strong>real WiFi networks</strong> on your Android phone.
+  </div>
+
   <div class="card">
-    <h3 style="margin-top:0; color:#ff9800;">Next Step: Real Android Testing</h3>
-    <p><strong>1.</strong> Run these commands in PowerShell:</p>
-    <pre style="background:#2a2a2a; padding:12px; border-radius:6px; overflow-x:auto;">cd C:\Users\ccars\Projects\wifi-analyzer
+    <h3>Run on Real Android Device (Recommended)</h3>
+    <p>Open PowerShell and run:</p>
+    <pre style="background:#111; padding:14px; border-radius:8px; overflow:auto; font-size:13px;">cd C:\Users\ccars\Projects\wifi-analyzer
 npx cap add android
 npx cap sync android
 npx cap open android</pre>
-    <p><strong>2.</strong> In Android Studio: Build &amp; run on a <strong>physical Android phone</strong>.</p>
-    <p><strong>3.</strong> Grant Location permission when asked.</p>
-    <p style="color:#4fc3f7; font-size:0.95em;">Real WiFi networks will appear once the native plugin is running on device.</p>
+    <p>Then build &amp; run on a physical phone and grant Location permission.</p>
   </div>
 
   <script>
-    // Make test function global so onclick works reliably
-    async function runTestScan() {
+    // Fully self-contained mock + analysis (no imports needed)
+    function runSelfContainedTest() {
       const resultBox = document.getElementById('resultBox');
       const btn = document.getElementById('testBtn');
-      
+
       btn.disabled = true;
-      btn.textContent = 'Scanning...';
+      btn.textContent = 'Analyzing...';
       resultBox.style.display = 'block';
-      resultBox.innerHTML = 'Running analysis engine with mock data...';
+      resultBox.innerHTML = 'Running analysis engine...';
 
-      try {
-        // Dynamically import the modules (works better than type=module in some cases)
-        const scanner = await import('./js/wifi-scanner.js');
-        const analyzer = await import('./js/wifi-analyzer.js');
+      // Mock scan result (same shape as real plugin)
+      const mockScan = {
+        timestamp: Date.now(),
+        currentNetwork: {
+          ssid: "HomeWiFi-5G",
+          bssid: "AA:BB:CC:11:22:33",
+          signalStrength: -72,
+          frequency: 5745,
+          channel: 149,
+          band: "5",
+          channelWidth: 80,
+          security: "WPA3",
+          isConnected: true
+        },
+        nearbyNetworks: [
+          { ssid: "HomeWiFi-5G", bssid: "AA:BB:CC:11:22:33", signalStrength: -72, frequency: 5745, channel: 149, band: "5", channelWidth: 80, security: "WPA3", isConnected: true },
+          { ssid: "Neighbor-2.4", bssid: "AA:BB:CC:44:55:66", signalStrength: -58, frequency: 2437, channel: 6, band: "2.4", channelWidth: 20, security: "WPA2", isConnected: false },
+          { ssid: "CafeGuest", bssid: "AA:BB:CC:77:88:99", signalStrength: -81, frequency: 2412, channel: 1, band: "2.4", channelWidth: 20, security: "Open", isConnected: false },
+          { ssid: "Office-5G", bssid: "AA:BB:CC:AA:BB:CC", signalStrength: -65, frequency: 5180, channel: 36, band: "5", channelWidth: 40, security: "WPA2", isConnected: false }
+        ]
+      };
 
-        const scanResult = await scanner.scanWifi();
-        const analysis = analyzer.analyzeScan(scanResult);
+      // Simple inline analysis (same logic as wifi-analyzer.js)
+      const issues = [];
+      let score = 100;
 
-        let html = `<strong>Health Score:</strong> ${analysis.healthScore}/100<br><br>`;
-        html += `<strong>Issues Detected:</strong> ${analysis.issues.length > 0 ? analysis.issues.join(', ') : 'None'}<br><br>`;
-        html += `<strong>Feedback:</strong><br>`;
-        analysis.feedback.forEach(f => {
-          html += `• ${f}<br>`;
-        });
+      const current = mockScan.currentNetwork;
 
-        resultBox.innerHTML = html;
-      } catch (err) {
-        resultBox.innerHTML = `<span style="color:#f44336">Error:</span> ${err.message}<br><br>Tip: Make sure you are running this from the wifi-analyzer folder and that node_modules exists.`;
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Run Test Scan (Mock Data)';
+      if (current.signalStrength < -70) {
+        issues.push("weak_signal");
+        score -= 25;
       }
+
+      // Channel congestion check
+      const sameChannel = mockScan.nearbyNetworks.filter(n => n.channel === current.channel && n.bssid !== current.bssid).length;
+      if (sameChannel >= 2) {
+        issues.push("channel_congestion");
+        score -= 15;
+      }
+
+      if (current.band === "2.4") {
+        const good5G = mockScan.nearbyNetworks.find(n => n.band === "5" && n.signalStrength > -65);
+        if (good5G) {
+          issues.push("using_2_4_when_5_available");
+          score -= 10;
+        }
+      }
+
+      if (current.security.toLowerCase().includes("open")) {
+        issues.push("open_network");
+        score -= 30;
+      }
+
+      score = Math.max(0, Math.min(100, score));
+
+      // Generate feedback
+      let feedback = [];
+      if (issues.includes("weak_signal")) feedback.push("Your signal is weak (-72 dBm). Move closer to the router.");
+      if (issues.includes("channel_congestion")) feedback.push("Channel " + current.channel + " has several strong networks. Consider changing channel.");
+      if (issues.includes("using_2_4_when_5_available")) feedback.push("A strong 5 GHz network is available. Switch to it for better performance.");
+      if (issues.includes("open_network")) feedback.push("Warning: Connected to an open network. Avoid sensitive activities.");
+      if (issues.length === 0) feedback.push("WiFi environment looks healthy.");
+
+      // Display result
+      let html = `<strong>Health Score:</strong> ${Math.round(score)}/100<br><br>`;
+      html += `<strong>Issues:</strong> ${issues.length > 0 ? issues.join(', ') : 'None'}<br><br>`;
+      html += `<strong>Feedback:</strong><br>`;
+      feedback.forEach(f => html += `• ${f}<br>`);
+
+      resultBox.innerHTML = html;
+      btn.disabled = false;
+      btn.textContent = 'Run Test Scan Again';
     }
 
-    // Attach click handler
-    document.getElementById('testBtn').addEventListener('click', runTestScan);
-
-    // Also expose globally in case onclick is needed
-    window.runTestScan = runTestScan;
+    document.getElementById('testBtn').addEventListener('click', runSelfContainedTest);
   </script>
 </body>
 </html>
