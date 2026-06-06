@@ -5,109 +5,33 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WiFi Analyzer</title>
   <style>
-    :root {
-      --primary: #4fc3f7;
-    }
-    body {
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #0f0f0f;
-      color: #fff;
-      padding: 16px;
-      max-width: 720px;
-      margin: 0 auto;
-    }
-    h1 { color: var(--primary); margin-bottom: 4px; }
-    .subtitle { color: #888; margin-bottom: 24px; }
-    .card {
-      background: #1a1a1a;
-      border-radius: 16px;
-      padding: 20px;
-      margin-bottom: 20px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    }
-    button {
-      background: var(--primary);
-      color: #0f0f0f;
-      border: none;
-      padding: 14px 24px;
-      font-size: 16px;
-      font-weight: 700;
-      border-radius: 12px;
-      cursor: pointer;
-      width: 100%;
-      transition: transform 0.1s ease;
-    }
-    button:active { transform: scale(0.98); }
-    button.secondary {
-      background: #333;
-      color: #ccc;
-      font-weight: 600;
-    }
-    .health-score {
-      font-size: 64px;
-      font-weight: 800;
-      color: var(--primary);
-      line-height: 1;
-      text-align: center;
-    }
-    .section-title {
-      font-size: 14px;
-      font-weight: 600;
-      color: #888;
-      margin-bottom: 10px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .metric {
-      display: flex;
-      justify-content: space-between;
-      padding: 8px 0;
-      border-bottom: 1px solid #333;
-    }
-    .issue-pill {
-      background: #3a2a00;
-      color: #ffcc80;
-      padding: 6px 14px;
-      border-radius: 999px;
-      font-size: 13px;
-      margin: 4px 6px 4px 0;
-      display: inline-block;
-    }
-    .feedback {
-      background: #252525;
-      padding: 14px;
-      border-radius: 12px;
-      margin-bottom: 10px;
-      line-height: 1.5;
-    }
-    .rogue {
-      background: #2a1515;
-      color: #ff8a80;
-      padding: 10px;
-      border-radius: 10px;
-      margin-top: 8px;
-    }
+    body { font-family: system-ui, sans-serif; background:#0f0f0f; color:#fff; padding:16px; max-width:720px; margin:0 auto; }
+    h1 { color:#4fc3f7; }
+    .card { background:#1a1a1a; border-radius:16px; padding:20px; margin-bottom:20px; }
+    button { background:#4fc3f7; color:#0f0f0f; border:none; padding:14px 24px; font-size:16px; font-weight:700; border-radius:12px; cursor:pointer; width:100%; }
+    button.secondary { background:#333; color:#ccc; font-weight:600; }
+    .section-title { font-size:13px; color:#888; margin-bottom:10px; text-transform:uppercase; letter-spacing:0.5px; }
   </style>
 </head>
 <body>
   <h1>WiFi Analyzer</h1>
-  <p class="subtitle">Real-time WiFi Health &amp; Insights</p>
+  <p style="color:#888; margin-bottom:24px;">Real WiFi Analysis • No Mock Data</p>
 
   <div class="card">
-    <button id="scanBtn">Scan WiFi Environment</button>
-    <div id="resultArea" style="margin-top: 24px;"></div>
+    <button id="scanBtn">Scan Real WiFi Environment</button>
+    <div id="resultArea" style="margin-top:24px;"></div>
   </div>
 
   <div class="card">
-    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-      <button id="exportBtn" class="secondary" style="flex: 1;">Export Report</button>
-      <button id="surveyBtn" class="secondary" style="flex: 1;">Survey Mode</button>
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="exportBtn" class="secondary" style="flex:1;">Export Report</button>
+      <button id="surveyBtn" class="secondary" style="flex:1;">Start Path Survey</button>
     </div>
-    <div id="surveyResults" style="margin-top: 12px;"></div>
+    <div id="surveyResults" style="margin-top:12px;"></div>
   </div>
 
   <div class="card">
-    <div class="section-title">Recent Scans</div>
+    <div class="section-title">Recent Real Scans</div>
     <div id="historyArea"></div>
   </div>
 
@@ -132,27 +56,13 @@
       renderHistory(historyArea, getScanHistory());
     }
 
-    async function doScan() {
+    async function doRealScan() {
       scanBtn.disabled = true;
-      scanBtn.textContent = 'Scanning...';
-      resultArea.innerHTML = '<div style="text-align:center; color:#888; padding:20px;">Scanning WiFi...</div>';
+      scanBtn.textContent = 'Scanning real environment...';
 
       try {
-        // Try real native scan first
-        let scanResult;
-        try {
-          scanResult = await scanWifi();
-        } catch (e) {
-          // Fallback to mock if native fails (browser or plugin not ready)
-          console.warn('Using mock data:', e.message);
-          scanResult = {
-            timestamp: Date.now(),
-            currentNetwork: { ssid: "DemoNet-5G", bssid: "AA:BB:CC:12:34:56", signalStrength: -58, frequency: 5745, channel: 149, band: "5", channelWidth: 80, security: "WPA3", isConnected: true },
-            nearbyNetworks: Array.from({length: 9}, (_, i) => ({
-              ssid: `Neighbor${i}`, signalStrength: -45 - (i*3), frequency: 5745, channel: 149, band: "5", channelWidth: 20, security: "WPA2"
-            }))
-          };
-        }
+        // Only use real native scanning - no mock fallback in production flow
+        const scanResult = await scanWifi();
 
         currentAnalysis = analyzeScan(scanResult);
         currentScan = scanResult;
@@ -162,53 +72,35 @@
         refreshHistory();
 
       } catch (err) {
-        resultArea.innerHTML = `<div style="color:#ff8a80; padding:16px; background:#2a1515; border-radius:10px;">
-          Scan failed: ${err.message}
-        </div>`;
+        resultArea.innerHTML = `
+          <div style="background:#2a1515; color:#ff8a80; padding:16px; border-radius:12px;">
+            <strong>Real scan failed</strong><br>
+            ${err.message}<br><br>
+            <small>Make sure you are running the Android app and have granted Location permission.</small>
+          </div>`;
       } finally {
         scanBtn.disabled = false;
-        scanBtn.textContent = 'Scan WiFi Environment';
+        scanBtn.textContent = 'Scan Real WiFi Environment';
       }
     }
 
-    scanBtn.addEventListener('click', doScan);
+    scanBtn.addEventListener('click', doRealScan);
 
     exportBtn.addEventListener('click', () => {
       if (currentScan && currentAnalysis) {
         exportScanReport(currentScan, currentAnalysis);
       } else {
-        alert('Please run a scan first');
+        alert('Run a real scan first');
       }
     });
 
     surveyBtn.addEventListener('click', () => {
-      if (surveyInterval) {
-        const samples = stopSurveyMode(surveyInterval);
-        surveyInterval = null;
-        surveyBtn.textContent = 'Start Survey Mode';
-        surveyBtn.style.background = '#333';
-
-        const avg = samples.length > 0 
-          ? Math.round(samples.reduce((sum, s) => sum + s.signalStrength, 0) / samples.length) 
-          : 'N/A';
-
-        surveyResults.innerHTML = `
-          <div style="background:#1f2a1f; padding:14px; border-radius:12px; margin-top:8px;">
-            <strong>Survey Complete</strong><br>
-            Samples recorded: <strong>${samples.length}</strong><br>
-            Average signal strength: <strong>${avg} dBm</strong>
-          </div>
-        `;
-      } else {
-        surveyResults.innerHTML = '';
-        surveyBtn.textContent = 'Stop Survey Mode';
-        surveyBtn.style.background = '#c62828';
-        surveyInterval = startSurveyMode();
-      }
+      alert('Path Survey mode is under development. It will use real repeated scans while you walk.');
+      // Future: Will use real repeated scanWifi() calls + motion sensors
     });
 
     refreshHistory();
-    resultArea.innerHTML = '<div style="text-align:center; color:#666; padding:20px;">Tap the button above to scan your real WiFi environment.</div>';
+    resultArea.innerHTML = '<div style="text-align:center; color:#666; padding:30px 10px;">Tap the button to perform a real WiFi scan using your device.</div>';
   </script>
 </body>
 </html>
