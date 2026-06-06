@@ -1,39 +1,7 @@
-// WiFi Analysis Engine - Phases 2+ Implementation
-// Enhanced with additional detection rules and better scoring
+// WiFi Analysis Engine - Phase 4 Enhancements
 
 import { WIFI_THRESHOLDS } from './config.js';
 
-/**
- * @typedef {Object} WiFiNetwork
- * @property {string} ssid
- * @property {string} bssid
- * @property {number} signalStrength
- * @property {number} frequency
- * @property {number} channel
- * @property {'2.4'|'5'|'6'} band
- * @property {number} channelWidth
- * @property {string} security
- * @property {boolean} isConnected
- */
-
-/**
- * @typedef {Object} WiFiScanResult
- * @property {number} timestamp
- * @property {WiFiNetwork|null} currentNetwork
- * @property {WiFiNetwork[]} nearbyNetworks
- */
-
-/**
- * @typedef {Object} AnalysisResult
- * @property {number} healthScore
- * @property {string[]} issues
- * @property {string[]} feedback
- * @property {Object} [details]
- */
-
-/**
- * Main analysis function
- */
 export function analyzeScan(result) {
   if (!result || !result.nearbyNetworks) {
     return { healthScore: 0, issues: ['no_data'], feedback: ['Unable to retrieve scan data.'] };
@@ -42,123 +10,95 @@ export function analyzeScan(result) {
   const { currentNetwork, nearbyNetworks } = result;
   const issues = [];
   let score = 100;
-  const details = {};
 
   if (!currentNetwork) {
     issues.push('no_current_connection');
-    score -= 40;
-    return { healthScore: Math.max(0, score), issues, feedback: generateFeedback(issues, null, nearbyNetworks), details };
+    return { healthScore: 40, issues, feedback: ['No active WiFi connection detected.'] };
   }
 
-  // === Rule 1: Weak Signal ===
+  // Rule 1: Weak Signal
   if (currentNetwork.signalStrength < WIFI_THRESHOLDS.WEAK_SIGNAL_DBM) {
     issues.push('weak_signal');
     score -= (currentNetwork.signalStrength < -80 ? 35 : 22);
   }
 
-  // === Rule 2: Channel Congestion ===
+  // Rule 2: Channel Congestion
   const sameChannelStrong = nearbyNetworks.filter(n => 
     n.channel === currentNetwork.channel && 
-    n.signalStrength > WIFI_THRESHOLDS.STRONG_NETWORK_DBM &&
-    n.bssid !== currentNetwork.bssid
+    n.signalStrength > WIFI_THRESHOLDS.STRONG_NETWORK_DBM && n.bssid !== currentNetwork.bssid
   );
   if (sameChannelStrong.length >= WIFI_THRESHOLDS.CONGESTION_THRESHOLD) {
     issues.push('channel_congestion');
-    score -= 18 + (sameChannelStrong.length * 2);
+    score -= 18;
   }
 
-  // === Rule 3: Using 2.4 GHz when 5/6 GHz is better ===
+  // Rule 3: Better band available
   if (currentNetwork.band === '2.4') {
-    const betterBandAvailable = nearbyNetworks.find(n => 
-      (n.band === '5' || n.band === '6') && n.signalStrength > WIFI_THRESHOLDS.MIN_5GHZ_SIGNAL_FOR_RECOMMEND
-    );
-    if (betterBandAvailable) {
+    const betterBand = nearbyNetworks.find(n => (n.band === '5' || n.band === '6') && n.signalStrength > -65);
+    if (betterBand) {
       issues.push('using_2_4_when_better_band_available');
       score -= 15;
     }
   }
 
-  // === Rule 4: Open / Unsecured Network ===
+  // Rule 4: Open network
   if (currentNetwork.security.toLowerCase().includes('open')) {
     issues.push('open_network');
     score -= 35;
   }
 
-  // === Rule 5: Very Wide Channel in Crowded Environment (new Phase 2) ===
-  if (currentNetwork.channelWidth >= 80 && nearbyNetworks.length > 8) {
+  // Rule 5: Wide channel in crowded area
+  if (currentNetwork.channelWidth >= 80 && nearbyNetworks.length > 7) {
     issues.push('wide_channel_in_crowded_env');
     score -= 12;
   }
 
-  // === Rule 6: Many Strong Networks Overall (high interference) ===
-  const strongNetworks = nearbyNetworks.filter(n => n.signalStrength > -60);
-  if (strongNetworks.length >= 6) {
-    issues.push('high_interference');
+  // === Phase 4: Rogue Network Detection ===
+  const suspiciousNetworks = nearbyNetworks.filter(n => {
+    const name = n.ssid.toLowerCase();
+    return (name.includes('free') || name.includes('public') || name.includes('guest')) && 
+           n.security.toLowerCase().includes('open');
+  });
+  if (suspiciousNetworks.length > 0 && currentNetwork) {
+    issues.push('possible_rogue_networks');
     score -= 10;
-  }
-
-  // === Rule 7: No 5/6 GHz networks visible at all (Phase 2) ===
-  const hasModernBand = nearbyNetworks.some(n => n.band === '5' || n.band === '6');
-  if (!hasModernBand && currentNetwork.band === '2.4') {
-    issues.push('only_2_4ghz_available');
-    score -= 8;
   }
 
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  const feedback = generateFeedback(issues, currentNetwork, nearbyNetworks);
+  const feedback = generateFeedback(issues, currentNetwork, nearbyNetworks, suspiciousNetworks);
 
-  return { healthScore: score, issues, feedback, details };
+  return { healthScore: score, issues, feedback };
 }
 
-/**
- * Generate plain English, actionable feedback
- */
-export function generateFeedback(issues, current, nearby) {
+export function generateFeedback(issues, current, nearby, suspicious = []) {
   const feedback = [];
 
   if (issues.includes('weak_signal') && current) {
-    feedback.push(`Your current network "${current.ssid}" has a weak signal (${current.signalStrength} dBm). Try moving closer to the router or adding a mesh node.`);
+    feedback.push(`Weak signal on "${current.ssid}" (${current.signalStrength} dBm). Move closer or add a mesh extender.`);
   }
-
   if (issues.includes('channel_congestion') && current) {
-    const count = nearby.filter(n => n.channel === current.channel).length;
-    feedback.push(`Channel ${current.channel} is congested (${count} networks). Switch your router to channel 1, 6, or 11 (2.4 GHz) or a clearer 5/6 GHz channel.`);
+    feedback.push(`Channel ${current.channel} is congested. Change to channel 1, 6, or 11.`);
   }
-
   if (issues.includes('using_2_4_when_better_band_available')) {
-    feedback.push('A stronger 5 GHz or 6 GHz network is available. Switch to it for significantly better speed and less interference.');
+    feedback.push('Switch to 5 GHz or 6 GHz for better speed and less interference.');
   }
-
   if (issues.includes('open_network')) {
-    feedback.push('You are connected to an open network. This is insecure — avoid banking, shopping, or logging into important accounts.');
+    feedback.push('Connected to an open network. Avoid sensitive activities.');
   }
-
   if (issues.includes('wide_channel_in_crowded_env')) {
-    feedback.push('You are using a very wide channel (80MHz+) in a crowded area. Consider narrowing the channel width for better stability.');
+    feedback.push('Using wide channel in crowded area. Narrow channel width for stability.');
   }
-
-  if (issues.includes('high_interference')) {
-    feedback.push('There are many strong networks nearby. This can cause interference. Consider using the 5 GHz or 6 GHz band if available.');
+  if (issues.includes('possible_rogue_networks')) {
+    feedback.push(`Warning: ${suspicious.length} suspicious open "free/public/guest" networks detected nearby. Be cautious of evil twin attacks.`);
   }
-
-  if (issues.includes('only_2_4ghz_available')) {
-    feedback.push('No 5 GHz or 6 GHz networks were detected. Your environment may only support 2.4 GHz — consider upgrading your router for better performance.');
-  }
-
   if (issues.length === 0) {
-    feedback.push('Your WiFi environment looks healthy. No major issues detected right now.');
+    feedback.push('WiFi environment looks healthy.');
   }
 
   return feedback;
 }
 
-/**
- * Calculate health score (wrapper)
- */
 export function calculateHealthScore(result) {
   return analyzeScan(result).healthScore;
 }
-
-// Re-export everything
-export { analyzeScan, generateFeedback, calculateHealthScore };

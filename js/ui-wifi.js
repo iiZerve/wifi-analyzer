@@ -1,95 +1,101 @@
-// UI Layer - Phases 2 & 3
-// Renders health score, issues, feedback, and history
+// UI Layer - Phase 4 additions (Export + Survey Mode UI)
 
 export function renderScanResult(container, scanResult, analysis) {
   if (!container) return;
-
   container.innerHTML = '';
 
   // Health Score
-  const scoreEl = document.createElement('div');
-  scoreEl.className = 'health-score-card';
-  scoreEl.innerHTML = `
-    <div style="font-size:13px; color:#aaa; margin-bottom:4px;">WI-FI HEALTH SCORE</div>
-    <div style="font-size:72px; font-weight:700; line-height:1; color:#4fc3f7;">${analysis.healthScore}</div>
-    <div style="font-size:14px; color:#888;">out of 100</div>
+  const scoreDiv = document.createElement('div');
+  scoreDiv.innerHTML = `
+    <div style="text-align:center; margin-bottom:20px;">
+      <div style="font-size:13px;color:#888;">HEALTH SCORE</div>
+      <div style="font-size:68px;font-weight:800;color:#4fc3f7;line-height:1;">${analysis.healthScore}</div>
+    </div>
   `;
-  container.appendChild(scoreEl);
+  container.appendChild(scoreDiv);
 
-  // Current Network Info
+  // Current Network
   if (scanResult.currentNetwork) {
     const net = scanResult.currentNetwork;
-    const netEl = document.createElement('div');
-    netEl.className = 'current-network-card';
-    netEl.style.cssText = 'margin-top:20px; background:#1e1e1e; padding:16px; border-radius:10px;';
-    netEl.innerHTML = `
-      <div style="font-weight:600; margin-bottom:8px;">Currently Connected</div>
-      <div style="font-size:18px; font-weight:600;">${net.ssid}</div>
-      <div style="color:#aaa; font-size:13px; margin-top:4px;">
-        ${net.band} GHz • Channel ${net.channel} • ${net.signalStrength} dBm • ${net.security}
-      </div>
+    const netDiv = document.createElement('div');
+    netDiv.style.cssText = 'background:#1e1e1e;padding:16px;border-radius:12px;margin-bottom:20px;';
+    netDiv.innerHTML = `
+      <strong>Connected to:</strong> ${net.ssid}<br>
+      <span style="color:#aaa;font-size:13px;">${net.band} GHz • Ch ${net.channel} • ${net.signalStrength} dBm • ${net.security}</span>
     `;
-    container.appendChild(netEl);
+    container.appendChild(netDiv);
   }
 
-  // Issues Section
-  const issuesEl = document.createElement('div');
-  issuesEl.style.marginTop = '24px';
-  issuesEl.innerHTML = `<div style="font-weight:600; margin-bottom:12px; color:#ff9800;">Detected Issues (${analysis.issues.length})</div>`;
-
-  if (analysis.issues.length === 0) {
-    const good = document.createElement('div');
-    good.style.cssText = 'background:#1e3a1e; padding:12px 16px; border-radius:8px; color:#81c784;';
-    good.textContent = '✓ No major issues found';
-    issuesEl.appendChild(good);
-  } else {
-    analysis.issues.forEach(issue => {
-      const pill = document.createElement('div');
-      pill.style.cssText = 'background:#3a2a00; color:#ffcc80; padding:8px 14px; border-radius:20px; display:inline-block; margin:4px 6px 4px 0; font-size:13px;';
-      pill.textContent = issue.replace(/_/g, ' ');
-      issuesEl.appendChild(pill);
-    });
-  }
-  container.appendChild(issuesEl);
-
-  // Feedback Section
-  const fbEl = document.createElement('div');
-  fbEl.style.marginTop = '24px';
-  fbEl.innerHTML = `<div style="font-weight:600; margin-bottom:12px;">Recommendations</div>`;
-
-  analysis.feedback.forEach(text => {
-    const item = document.createElement('div');
-    item.style.cssText = 'background:#1e1e1e; padding:14px 16px; border-radius:10px; margin-bottom:10px; line-height:1.5; font-size:14.5px;';
-    item.textContent = text;
-    fbEl.appendChild(item);
+  // Issues
+  const issuesDiv = document.createElement('div');
+  issuesDiv.innerHTML = `<strong style="color:#ff9800;">Issues (${analysis.issues.length})</strong>`;
+  analysis.issues.forEach(issue => {
+    const pill = document.createElement('span');
+    pill.style.cssText = 'background:#3a2a00;color:#ffcc80;padding:6px 12px;border-radius:20px;font-size:12px;margin:6px 6px 0 0;display:inline-block;';
+    pill.textContent = issue.replace(/_/g, ' ');
+    issuesDiv.appendChild(pill);
   });
+  container.appendChild(issuesDiv);
 
-  container.appendChild(fbEl);
+  // Feedback
+  const fbDiv = document.createElement('div');
+  fbDiv.style.marginTop = '20px';
+  fbDiv.innerHTML = '<strong>Recommendations</strong>';
+  analysis.feedback.forEach(text => {
+    const p = document.createElement('div');
+    p.style.cssText = 'background:#252525;padding:14px 16px;border-radius:10px;margin-top:10px;line-height:1.5;';
+    p.textContent = text;
+    fbDiv.appendChild(p);
+  });
+  container.appendChild(fbDiv);
 }
 
 export function renderHistory(container, history) {
   if (!container) return;
   container.innerHTML = '';
-
   if (history.length === 0) {
-    container.innerHTML = '<div style="color:#666; padding:12px 0;">No previous scans yet.</div>';
+    container.innerHTML = '<div style="color:#666;">No scans yet</div>';
     return;
   }
-
-  history.slice(0, 5).forEach((scan, index) => {
-    const item = document.createElement('div');
-    item.style.cssText = 'background:#1e1e1e; padding:12px 16px; border-radius:10px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;';
-    
-    const date = new Date(scan.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-    const score = scan.healthScore || '—';
-
-    item.innerHTML = `
-      <div>
-        <div style="font-weight:600;">${date}</div>
-        <div style="font-size:13px; color:#888;">${scan.currentNetwork ? scan.currentNetwork.ssid : 'No connection'}</div>
-      </div>
-      <div style="font-size:22px; font-weight:700; color:#4fc3f7;">${score}</div>
-    `;
-    container.appendChild(item);
+  history.slice(0,6).forEach(item => {
+    const el = document.createElement('div');
+    el.style.cssText = 'background:#1e1e1e;padding:10px 14px;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;';
+    const time = new Date(item.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    el.innerHTML = `<div>${time} - ${item.currentNetwork?.ssid || 'No connection'}</div><div style="font-weight:700;color:#4fc3f7;">${item.healthScore || '--'}</div>`;
+    container.appendChild(el);
   });
+}
+
+// Phase 4: Export report as JSON
+export function exportScanReport(scanResult, analysis) {
+  const report = {
+    exportedAt: new Date().toISOString(),
+    healthScore: analysis.healthScore,
+    currentNetwork: scanResult.currentNetwork,
+    issues: analysis.issues,
+    feedback: analysis.feedback,
+    nearbyNetworks: scanResult.nearbyNetworks
+  };
+
+  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `wifi-report-${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Phase 4: Survey Mode UI helpers (stubs for future native integration)
+export function startSurveyMode(onUpdate) {
+  console.log('%c[Survey Mode] Started recording signal samples...', 'color:#4fc3f7');
+  // In real implementation this would use background location + periodic scans
+  return setInterval(() => {
+    onUpdate({ timestamp: Date.now(), signal: Math.floor(Math.random() * 40) - 80 });
+  }, 3000);
+}
+
+export function stopSurveyMode(intervalId) {
+  clearInterval(intervalId);
+  console.log('%c[Survey Mode] Stopped.', 'color:#ff9800');
 }

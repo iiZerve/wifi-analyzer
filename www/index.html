@@ -5,110 +5,93 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WiFi Analyzer</title>
   <style>
-    body { font-family: system-ui, sans-serif; background: #121212; color: #fff; padding: 20px; max-width: 720px; margin: 0 auto; }
-    h1 { color: #4fc3f7; }
-    .card { background: #1e1e1e; border-radius: 14px; padding: 20px; margin-bottom: 20px; }
-    button { background: #4fc3f7; color: #121212; border: none; padding: 14px 24px; font-size: 15px; font-weight: 600; border-radius: 10px; cursor: pointer; }
-    button:hover { background: #29b6f6; }
-    .health-score { font-size: 64px; font-weight: 800; color: #4fc3f7; line-height: 1; }
-    .issue-pill { background: #3a2a00; color: #ffcc80; padding: 6px 14px; border-radius: 999px; font-size: 13px; display: inline-block; margin: 4px 6px 4px 0; }
-    .feedback-item { background: #252525; padding: 14px 16px; border-radius: 10px; margin-bottom: 10px; line-height: 1.5; }
-    .history-item { background: #1e1e1e; padding: 12px 16px; border-radius: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; }
+    body { font-family: system-ui, sans-serif; background:#121212; color:#fff; padding:20px; max-width:720px; margin:0 auto; }
+    .card { background:#1e1e1e; border-radius:14px; padding:20px; margin-bottom:20px; }
+    button { background:#4fc3f7; color:#121212; border:none; padding:12px 20px; font-size:15px; font-weight:600; border-radius:10px; cursor:pointer; }
+    button.secondary { background:#333; color:#ccc; }
   </style>
 </head>
 <body>
-  <h1>WiFi Analyzer</h1>
-  <p style="color:#888; margin-bottom:24px;">Phases 2-4 Demo • Rich UI + History</p>
+  <h1 style="color:#4fc3f7">WiFi Analyzer</h1>
+  <p style="color:#888">Phases 2-4 Demo • Export + Survey Mode</p>
 
   <div class="card">
-    <button id="scanBtn" style="width:100%; padding:16px; font-size:17px;">Scan WiFi Environment</button>
-    <div id="mainResult" style="margin-top:24px;"></div>
+    <button id="scanBtn" style="width:100%; padding:16px; font-size:17px;">Scan WiFi Now</button>
+    <div id="resultArea" style="margin-top:20px;"></div>
+
+    <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="exportBtn" class="secondary">Export Report (JSON)</button>
+      <button id="surveyBtn" class="secondary">Start Survey Mode</button>
+    </div>
   </div>
 
   <div class="card">
-    <div style="font-weight:600; margin-bottom:12px; color:#888;">Recent Scans (History)</div>
-    <div id="historyContainer"></div>
-    <button id="clearHistoryBtn" style="margin-top:12px; background:#333; color:#aaa; font-size:13px; padding:8px 16px;">Clear History</button>
+    <div style="font-weight:600; margin-bottom:10px; color:#888;">Recent History</div>
+    <div id="historyArea"></div>
   </div>
 
   <script type="module">
     import { analyzeScan } from './js/wifi-analyzer.js';
     import { saveScan, getScanHistory, clearHistory } from './js/wifi-storage.js';
-    import { renderScanResult, renderHistory } from './js/ui-wifi.js';
+    import { renderScanResult, renderHistory, exportScanReport, startSurveyMode, stopSurveyMode } from './js/ui-wifi.js';
 
-    const mainResult = document.getElementById('mainResult');
-    const historyContainer = document.getElementById('historyContainer');
+    let currentScan = null;
+    let currentAnalysis = null;
+    let surveyInterval = null;
+
+    const resultArea = document.getElementById('resultArea');
+    const historyArea = document.getElementById('historyArea');
     const scanBtn = document.getElementById('scanBtn');
-    const clearBtn = document.getElementById('clearHistoryBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const surveyBtn = document.getElementById('surveyBtn');
 
-    function updateHistory() {
-      const history = getScanHistory();
-      renderHistory(historyContainer, history);
+    function refreshHistory() {
+      renderHistory(historyArea, getScanHistory());
     }
 
-    function runNewScan() {
-      scanBtn.disabled = true;
-      scanBtn.textContent = 'Scanning...';
-
-      // Simulate different realistic scenarios
-      const scenarios = [
-        { name: 'Good 5GHz', signal: -48, band: '5', channel: 36, congestion: 1 },
-        { name: 'Weak + Congested 2.4', signal: -78, band: '2.4', channel: 6, congestion: 5 },
-        { name: 'Open Network', signal: -55, band: '2.4', channel: 1, open: true }
-      ];
-      const scenario = scenarios[Math.floor(Math.random() * scenarios.length)];
-
-      // Build realistic mock result
-      const mockResult = {
+    function doScan() {
+      // Generate varied mock data
+      const mock = {
         timestamp: Date.now(),
-        currentNetwork: {
-          ssid: scenario.name,
-          bssid: 'AA:BB:CC:00:11:22',
-          signalStrength: scenario.signal,
-          frequency: scenario.band === '5' ? 5180 : 2437,
-          channel: scenario.channel,
-          band: scenario.band,
-          channelWidth: scenario.band === '5' ? 80 : 20,
-          security: scenario.open ? 'Open' : 'WPA3',
-          isConnected: true
-        },
-        nearbyNetworks: Array.from({length: scenario.congestion + 3}, (_, i) => ({
-          ssid: `Neighbor-${i}`,
-          bssid: `AA:BB:CC:00:00:${i}`,
-          signalStrength: -50 - (i * 4),
-          frequency: scenario.band === '5' ? 5180 : 2437,
-          channel: scenario.channel,
-          band: scenario.band,
-          channelWidth: 20,
-          security: 'WPA2',
-          isConnected: false
-        }))
+        currentNetwork: { ssid: "DemoNet-5G", bssid: "AA:BB:CC:12:34:56", signalStrength: -58, frequency: 5745, channel: 149, band: "5", channelWidth: 80, security: "WPA3", isConnected: true },
+        nearbyNetworks: Array.from({length: 9}, (_,i) => ({ ssid: `Neighbor${i}`, signalStrength: -48 -i*3, channel: i % 3 === 0 ? 149 : 36, band: "5", security: "WPA2" }))
       };
 
-      const analysis = analyzeScan(mockResult);
+      currentAnalysis = analyzeScan(mock);
+      currentScan = mock;
 
-      // Render beautiful result
-      renderScanResult(mainResult, mockResult, analysis);
-
-      // Save to history
-      saveScan(mockResult, analysis);
-      updateHistory();
-
-      scanBtn.disabled = false;
-      scanBtn.textContent = 'Scan WiFi Environment';
+      renderScanResult(resultArea, mock, currentAnalysis);
+      saveScan(mock, currentAnalysis);
+      refreshHistory();
     }
 
-    // Event listeners
-    scanBtn.addEventListener('click', runNewScan);
-    clearBtn.addEventListener('click', () => {
-      clearHistory();
-      updateHistory();
-      mainResult.innerHTML = '';
+    scanBtn.addEventListener('click', doScan);
+
+    exportBtn.addEventListener('click', () => {
+      if (currentScan && currentAnalysis) {
+        exportScanReport(currentScan, currentAnalysis);
+      } else {
+        alert('Run a scan first');
+      }
     });
 
-    // Initial load
-    updateHistory();
-    mainResult.innerHTML = '<div style="color:#666; padding:12px 0;">Click the button above to run your first scan.</div>';
+    surveyBtn.addEventListener('click', () => {
+      if (surveyInterval) {
+        stopSurveyMode(surveyInterval);
+        surveyInterval = null;
+        surveyBtn.textContent = 'Start Survey Mode';
+        surveyBtn.style.background = '#333';
+      } else {
+        surveyBtn.textContent = 'Stop Survey Mode';
+        surveyBtn.style.background = '#c62828';
+        surveyInterval = startSurveyMode((sample) => {
+          console.log('Survey sample:', sample);
+          // In real app this would update a live graph
+        });
+      }
+    });
+
+    refreshHistory();
   </script>
 </body>
 </html>
