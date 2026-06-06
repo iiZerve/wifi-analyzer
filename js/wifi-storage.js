@@ -1,5 +1,4 @@
-// WiFi Storage Layer
-// Handles saving/loading scan history and settings using localStorage (can be upgraded to Capacitor Preferences later)
+// WiFi Storage Layer - Enhanced for Phase 3 (History)
 
 const STORAGE_KEYS = {
   SCAN_HISTORY: 'wifi_scan_history',
@@ -7,18 +6,20 @@ const STORAGE_KEYS = {
   LAST_SCAN: 'wifi_last_scan'
 };
 
-/**
- * Save a new scan result to history
- * @param {Object} scanResult - WiFiScanResult object
- */
-export function saveScan(scanResult) {
+export function saveScan(scanResult, analysis = null) {
   try {
     const history = getScanHistory();
-    history.unshift(scanResult); // newest first
-    // Limit to last 20 scans
-    const trimmed = history.slice(0, 20);
+
+    const record = {
+      ...scanResult,
+      healthScore: analysis ? analysis.healthScore : null,
+      savedAt: Date.now()
+    };
+
+    history.unshift(record);
+    const trimmed = history.slice(0, 25); // keep last 25 scans
     localStorage.setItem(STORAGE_KEYS.SCAN_HISTORY, JSON.stringify(trimmed));
-    localStorage.setItem(STORAGE_KEYS.LAST_SCAN, JSON.stringify(scanResult));
+    localStorage.setItem(STORAGE_KEYS.LAST_SCAN, JSON.stringify(record));
   } catch (e) {
     console.error('Failed to save scan:', e);
   }
@@ -42,6 +43,11 @@ export function getLastScan() {
   }
 }
 
+export function clearHistory() {
+  localStorage.removeItem(STORAGE_KEYS.SCAN_HISTORY);
+  localStorage.removeItem(STORAGE_KEYS.LAST_SCAN);
+}
+
 export function saveSettings(settings) {
   localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
 }
@@ -49,13 +55,8 @@ export function saveSettings(settings) {
 export function getSettings() {
   try {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-    return data ? JSON.parse(data) : { autoScan: false, notifications: true };
+    return data ? JSON.parse(data) : { autoScan: false };
   } catch (e) {
-    return { autoScan: false, notifications: true };
+    return { autoScan: false };
   }
-}
-
-export function clearHistory() {
-  localStorage.removeItem(STORAGE_KEYS.SCAN_HISTORY);
-  localStorage.removeItem(STORAGE_KEYS.LAST_SCAN);
 }
