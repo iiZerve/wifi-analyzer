@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WiFi Analyzer</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #121212; color: #fff; padding: 20px; }
+    h1 { color: #4fc3f7; }
+    .placeholder { background: #1e1e1e; padding: 20px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>WiFi Analyzer</h1>
+  <p>Capacitor Android App - Foundation initialized.</p>
+  <div class="placeholder">
+    <p>UI will be built in Phase 1-3. Current focus: Analysis engine + Native plugin.</p>
+    <p>Open the app in Android Studio after running <code>npx cap open android</code>.</p>
+  </div>
+  <script type="module">
+    import { scanWifi } from '../js/wifi-scanner.js';
+    import { analyzeScan } from '../js/wifi-analyzer.js';
+    
+    // Demo button for testing in browser
+    window.testScan = async () => {
+      const result = await scanWifi();
+      const analysis = analyzeScan(result);
+      console.log('Scan Result:', result);
+      console.log('Analysis:', analysis);
+      alert('Health Score: ' + analysis.healthScore + '\nIssues: ' + analysis.issues.join(', '));
+    };
+  </script>
+  <button onclick="testScan()">Test Scan (Browser Mock)</button>
+</body>
+</html>
