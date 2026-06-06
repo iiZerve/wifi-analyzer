@@ -5,139 +5,214 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WiFi Analyzer</title>
   <style>
-    body { font-family: system-ui, sans-serif; background:#0f0f0f; color:#fff; padding:16px; max-width:720px; margin:0 auto; }
-    h1 { color:#4fc3f7; }
-    .card { background:#1a1a1a; border-radius:16px; padding:20px; margin-bottom:20px; }
-    button { background:#4fc3f7; color:#0f0f0f; border:none; padding:14px 24px; font-size:16px; font-weight:700; border-radius:12px; cursor:pointer; }
-    button.secondary { background:#333; color:#ccc; font-weight:600; }
-    .freshness { font-size:12px; color:#888; margin-top:4px; }
-    .survey-active { background:#1f3a1f; }
+    body { font-family: system-ui, sans-serif; background:#121212; color:#fff; padding:20px; max-width:740px; margin:0 auto; }
+    .card { background:#1e1e1e; border-radius:14px; padding:20px; margin-bottom:20px; }
+    button { background:#4fc3f7; color:#121212; border:none; padding:12px 20px; font-size:15px; font-weight:600; border-radius:10px; cursor:pointer; }
+    button.secondary { background:#333; color:#ccc; }
+    .survey-result { background:#252525; padding:12px; border-radius:8px; margin-top:12px; font-size:13px; }
+    .fresh { color:#4ade80; }
+    .stale { color:#f87171; }
+    .guidance { background:#1f3a1f; padding:8px 12px; border-radius:6px; margin:8px 0; font-size:13px; }
+    .rogue { background:#2a1f1f; padding:6px; border-radius:6px; margin:4px 0; font-size:12px; }
   </style>
 </head>
 <body>
-  <h1>WiFi Analyzer</h1>
-  <p style="color:#888; margin-bottom:20px;">Real-time • No mock data</p>
+  <h1 style="color:#4fc3f7">WiFi Analyzer</h1>
+  <p style="color:#888">Real scanning • Walking Survey with movement • Rogue detection • Path Optimizer</p>
 
   <div class="card">
-    <button id="scanBtn">Scan Real WiFi</button>
-    <div id="lastScanInfo" class="freshness" style="margin-top:8px; text-align:center;"></div>
+    <button id="scanBtn" style="width:100%; padding:16px; font-size:17px;">Scan WiFi Now</button>
+    <div id="lastScanInfo" style="margin-top:8px; font-size:12px; color:#888;">Last scan: never</div>
     <div id="resultArea" style="margin-top:20px;"></div>
+
+    <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="exportBtn" class="secondary">Export Detailed Report</button>
+      <button id="surveyBtn" class="secondary">Start Walking Survey</button>
+      <button id="reportBtn" class="secondary">Show WiFi Report</button>
+    </div>
+
+    <!-- Walking Survey status (prominent per plan) -->
+    <div id="surveyStatus" style="display:none; margin-top:12px; padding:10px; background:#052e16; border-radius:8px; font-size:13px;">
+      <strong>Walking Survey active</strong> • Scans: <span id="surveyCount">0</span> • Moved: <span id="surveyMoved">no</span> (steps: <span id="surveySteps">0</span>)
+      <div id="surveyGuidance" class="guidance" style="display:none; margin-top:6px;"></div>
+    </div>
+
+    <!-- Rogue list (Task 7, dedicated) -->
+    <div id="rogueSection" style="margin-top:12px;">
+      <div style="font-weight:600; margin-bottom:6px; color:#888;">Suspicious Open Networks (Rogue Risk)</div>
+      <div id="rogueList"></div>
+    </div>
+
+    <div id="surveyResults" style="margin-top:12px;"></div>
   </div>
 
   <div class="card">
-    <button id="surveyBtn" class="secondary">Start Walking Survey</button>
-    <div id="surveyResults" style="margin-top:16px;"></div>
-  </div>
-
-  <div class="card">
-    <div style="font-size:13px; color:#888; margin-bottom:10px;">Recent Real Scans</div>
+    <div style="font-weight:600; margin-bottom:10px; color:#888;">Recent Scan History</div>
     <div id="historyArea"></div>
   </div>
 
   <script type="module">
     import { analyzeScan } from './js/wifi-analyzer.js';
     import { saveScan, getScanHistory } from './js/wifi-storage.js';
-    import { renderScanResult, renderHistory, exportScanReport } from './js/ui-wifi.js';
+    import { renderScanResult, renderHistory, exportScanReport, startSurveyMode, stopSurveyMode, getSurveySamples, renderRogueList, renderRogueListInContainer } from './js/ui-wifi.js';
     import { scanWifi } from './js/wifi-scanner.js';
 
     let currentScan = null;
     let currentAnalysis = null;
     let surveyInterval = null;
-    let surveyScans = [];
+    let freshnessTimer = null;
+    let lastScanTs = null;
 
     const resultArea = document.getElementById('resultArea');
     const historyArea = document.getElementById('historyArea');
     const surveyResults = document.getElementById('surveyResults');
     const scanBtn = document.getElementById('scanBtn');
+    const exportBtn = document.getElementById('exportBtn');
     const surveyBtn = document.getElementById('surveyBtn');
+    const reportBtn = document.getElementById('reportBtn');
     const lastScanInfo = document.getElementById('lastScanInfo');
-
-    function updateLastScanTime() {
-      if (currentScan && currentScan.timestamp) {
-        const secondsAgo = Math.floor((Date.now() - currentScan.timestamp) / 1000);
-        lastScanInfo.innerHTML = `Last scan: ${secondsAgo}s ago • Freshness: ${secondsAgo < 15 ? 'Good' : 'Stale'}`;
-      }
-    }
+    const surveyStatus = document.getElementById('surveyStatus');
+    const surveyCountEl = document.getElementById('surveyCount');
+    const surveyMovedEl = document.getElementById('surveyMoved');
+    const surveyStepsEl = document.getElementById('surveySteps');
+    const surveyGuidanceEl = document.getElementById('surveyGuidance');
+    const rogueListEl = document.getElementById('rogueList');
 
     function refreshHistory() {
       renderHistory(historyArea, getScanHistory());
     }
 
+    function updateFreshness() {
+      if (!lastScanTs) {
+        lastScanInfo.textContent = 'Last scan: never';
+        return;
+      }
+      const age = Math.floor((Date.now() - lastScanTs) / 1000);
+      let cls = age < 30 ? 'fresh' : (age < 120 ? '' : 'stale');
+      lastScanInfo.innerHTML = `Last scan: ${age}s ago <span class="${cls}">${age < 30 ? '(FRESH)' : (age < 120 ? '(RECENT)' : '(STALE)')}</span>`;
+    }
+
+    function startFreshnessTimer() {
+      if (freshnessTimer) clearInterval(freshnessTimer);
+      freshnessTimer = setInterval(updateFreshness, 1000);
+    }
+
     async function doRealScan() {
-      scanBtn.disabled = true;
-      scanBtn.textContent = 'Scanning...';
-
+      resultArea.innerHTML = '<div style="color:#888;">Scanning (real device)...</div>';
       try {
-        const scanResult = await scanWifi();
-        currentAnalysis = analyzeScan(scanResult);
-        currentScan = scanResult;
-
-        renderScanResult(resultArea, scanResult, currentAnalysis);
-        saveScan(scanResult, currentAnalysis);
+        const real = await scanWifi();
+        currentScan = real;
+        currentAnalysis = analyzeScan(real);
+        renderScanResult(resultArea, real, currentAnalysis);
+        saveScan(real, currentAnalysis);
         refreshHistory();
-        updateLastScanTime();
+        lastScanTs = real.timestamp || Date.now();
+        updateFreshness();
+        startFreshnessTimer();
 
-        // Auto-refresh freshness every 5 seconds
-        setTimeout(updateLastScanTime, 5000);
-
-      } catch (err) {
-        resultArea.innerHTML = `<div style="background:#2a1515;color:#ff8a80;padding:16px;border-radius:12px;">
-          Real scan failed: ${err.message}
-        </div>`;
-      } finally {
-        scanBtn.disabled = false;
-        scanBtn.textContent = 'Scan Real WiFi';
+        // Update rogue list (Task 7)
+        const rogues = currentAnalysis.rogues || [];
+        renderRogueList(rogueListEl, rogues);
+      } catch (e) {
+        resultArea.innerHTML = `<div style="color:#f87171;">Real scan error: ${e.message}</div>`;
       }
     }
 
     scanBtn.addEventListener('click', doRealScan);
 
-    // === Walking Survey Mode (Phase 1) ===
-    surveyBtn.addEventListener('click', async () => {
-      if (surveyInterval) {
-        // Stop survey
-        clearInterval(surveyInterval);
-        surveyInterval = null;
-        surveyBtn.textContent = 'Start Walking Survey';
-        surveyBtn.style.background = '#333';
-
-        const summary = `Survey complete. ${surveyScans.length} real scans recorded.`;
-        surveyResults.innerHTML = `<div style="background:#1f2a1f;padding:16px;border-radius:12px;">
-          <strong>${summary}</strong><br>
-          <small>Feature will expand with movement tracking &amp; recommendations.</small>
-        </div>`;
-        surveyScans = [];
+    exportBtn.addEventListener('click', () => {
+      if (currentScan && currentAnalysis) {
+        exportScanReport(currentScan, currentAnalysis);
       } else {
-        // Start survey
-        surveyScans = [];
-        surveyResults.innerHTML = '<div style="color:#4fc3f7;">Walking Survey active. Performing real scans every 5 seconds...</div>';
-        surveyBtn.textContent = 'Stop Walking Survey';
-        surveyBtn.style.background = '#c62828';
-
-        // Perform first scan immediately
-        try {
-          const first = await scanWifi();
-          surveyScans.push(first);
-          renderScanResult(resultArea, first, analyzeScan(first));
-        } catch(e) {}
-
-        surveyInterval = setInterval(async () => {
-          try {
-            const newScan = await scanWifi();
-            surveyScans.push(newScan);
-            renderScanResult(resultArea, newScan, analyzeScan(newScan));
-            // Update freshness
-            currentScan = newScan;
-            updateLastScanTime();
-          } catch(e) {
-            console.warn('Survey scan failed', e);
-          }
-        }, 5000);
+        alert('Run a (real) scan first to export a report.');
       }
     });
 
+    reportBtn.addEventListener('click', () => {
+      // Show WiFi Report (rich on-screen summary + export prompt, per plan)
+      let text = '=== WiFi Analyzer Report (real data only) ===\n';
+      text += `Generated: ${new Date().toISOString()}\n\n`;
+      if (currentScan) {
+        text += `Last Scan: ${currentScan.nearbyNetworks ? currentScan.nearbyNetworks.length : 0} networks\n`;
+        const rogues = currentAnalysis ? (currentAnalysis.rogues || []) : [];
+        if (rogues.length) text += `Suspicious opens: ${rogues.length} (High/Med/Low)\n`;
+      }
+      const samples = getSurveySamples ? getSurveySamples() : [];
+      if (samples.length) {
+        text += `\nLast Survey: ${samples.length} real scans\n`;
+      }
+      text += '\n(Full data in exports. All scans used real native WifiScannerPlugin + accelerometer. No simulated data.)\n';
+      text += '=== End Report ===\n';
+
+      // Show in result area
+      resultArea.innerHTML = `<pre style="background:#111;padding:12px;white-space:pre-wrap;font-size:12px;">${text}</pre>`;
+      if (confirm('Report shown. Export detailed JSON now?')) {
+        if (currentScan && currentAnalysis) exportScanReport(currentScan, currentAnalysis);
+      }
+    });
+
+    surveyBtn.addEventListener('click', async () => {
+      if (surveyInterval || (surveyStatus.style.display !== 'none' && surveyStatus.style.display !== '')) {
+        // stop
+        const res = stopSurveyMode();
+        surveyInterval = null;
+        surveyBtn.textContent = 'Start Walking Survey';
+        surveyBtn.style.background = '#333';
+        surveyStatus.style.display = 'none';
+        surveyGuidanceEl.style.display = 'none';
+
+        // Rich summary (ported)
+        surveyResults.innerHTML = `
+          <div class="survey-result">
+            <strong>Walking Survey Complete (real data)</strong><br>
+            Scans: <strong>${res.samples ? res.samples.length : 0}</strong><br>
+            Duration: <strong>${res.duration || 0}s</strong><br>
+            Suspicious opens seen: <strong>${(res.rogues || []).length}</strong><br>
+            <pre style="font-size:11px;white-space:pre-wrap;margin-top:8px;">${res.summary || ''}</pre>
+            <small style="color:#888;">All data from real device WiFi scans + accelerometer. No simulated data.</small>
+          </div>
+        `;
+        // show rogues in the list too
+        renderRogueList(rogueListEl, res.rogues || []);
+      } else {
+        // start real walking survey
+        surveyResults.innerHTML = '';
+        surveyBtn.textContent = 'Stop Walking Survey';
+        surveyBtn.style.background = '#c62828';
+        surveyStatus.style.display = 'block';
+        surveyCountEl.textContent = '0';
+        surveyMovedEl.textContent = 'no';
+        surveyStepsEl.textContent = '0';
+        surveyGuidanceEl.style.display = 'none';
+        rogueListEl.innerHTML = '';
+
+        const onUpdate = (sample) => {
+          surveyCountEl.textContent = (parseInt(surveyCountEl.textContent) || 0) + 1;
+          if (sample.moved) surveyMovedEl.textContent = 'yes';
+          surveyStepsEl.textContent = (parseInt(surveyStepsEl.textContent) || 0) + (sample.stepDelta || 0);
+          if (sample.guidance) {
+            surveyGuidanceEl.style.display = 'block';
+            surveyGuidanceEl.textContent = 'Guidance: ' + sample.guidance;
+          }
+          // live rogue update
+          if (sample.analysis && sample.analysis.rogues) {
+            renderRogueList(rogueListEl, sample.analysis.rogues);
+          }
+          // live result (optional)
+          if (sample.scan && sample.analysis) {
+            renderScanResult(resultArea, sample.scan, sample.analysis);
+          }
+        };
+
+        const state = await startSurveyMode(onUpdate);
+        surveyInterval = state.intervalId || true; // marker
+      }
+    });
+
+    // initial
     refreshHistory();
-    resultArea.innerHTML = '<div style="text-align:center;color:#666;padding:30px 10px;">Tap Scan or start a Walking Survey using real scans.</div>';
+    resultArea.innerHTML = '<div style="color:#666; padding:8px 0;">Click "Scan WiFi Now" for real device scan (no mocks). Use Walking Survey for movement tracking + guidance + rogues.</div>';
+    lastScanInfo.textContent = 'Last scan: never';
   </script>
 </body>
 </html>

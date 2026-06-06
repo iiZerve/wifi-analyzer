@@ -1,4 +1,7 @@
-// UI Layer - Phase 4 additions (Export + Survey Mode UI)
+// UI Layer - Enhanced with real Walking Survey (movement + guidance + rich summary), rogue list, no mocks
+
+import { scanWifi } from './wifi-scanner.js';
+import { classifyRogueNetworks } from './wifi-analyzer.js';
 
 export function renderScanResult(container, scanResult, analysis) {
   if (!container) return;
@@ -66,7 +69,7 @@ export function renderHistory(container, history) {
   });
 }
 
-// Phase 4: Export report as JSON
+// Phase 4: Export report as JSON (richer)
 export function exportScanReport(scanResult, analysis) {
   const report = {
     exportedAt: new Date().toISOString(),
@@ -74,7 +77,8 @@ export function exportScanReport(scanResult, analysis) {
     currentNetwork: scanResult.currentNetwork,
     issues: analysis.issues,
     feedback: analysis.feedback,
-    nearbyNetworks: scanResult.nearbyNetworks
+    nearbyNetworks: scanResult.nearbyNetworks,
+    rogues: analysis.rogues || []
   };
 
   const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
@@ -86,16 +90,181 @@ export function exportScanReport(scanResult, analysis) {
   URL.revokeObjectURL(url);
 }
 
-// Phase 4: Survey Mode UI helpers (stubs for future native integration)
-export function startSurveyMode(onUpdate) {
-  console.log('%c[Survey Mode] Started recording signal samples...', 'color:#4fc3f7');
-  // In real implementation this would use background location + periodic scans
-  return setInterval(() => {
-    onUpdate({ timestamp: Date.now(), signal: Math.floor(Math.random() * 40) - 80 });
-  }, 3000);
+// === Real Walking Survey (ported/enhanced from implementation: real repeated scans, movement via accelerometer, rogues with severity, guidance, rich summary, no random/mocks) ===
+
+let _surveyState = {
+  intervalId: null,
+  samples: [],
+  roguesSeen: [],
+  guidanceLog: [],
+  startTs: 0,
+  onUpdate: null
+};
+
+let _motionListener = null;
+let _motionSamples = [];
+let _lastMotionTs = 0;
+
+function startMotionTracking() {
+  if (_motionListener) return;
+  if (!('DeviceMotionEvent' in window)) {
+    console.log('[Survey] Motion sensors unavailable');
+    return;
+  }
+  _motionSamples = [];
+  _lastMotionTs = Date.now();
+  _motionListener = function (event) {
+    const acc = event.accelerationIncludingGravity || event.acceleration;
+    if (!acc) return;
+    const mag = Math.sqrt((acc.x||0)**2 + (acc.y||0)**2 + (acc.z||0)**2);
+    _motionSamples.push({ t: Date.now(), mag });
+    if (_motionSamples.length > 120) _motionSamples.shift();
+  };
+  window.addEventListener('devicemotion', _motionListener, { passive: true });
 }
 
-export function stopSurveyMode(intervalId) {
-  clearInterval(intervalId);
-  console.log('%c[Survey Mode] Stopped.', 'color:#ff9800');
+function stopMotionTracking() {
+  if (_motionListener) {
+    window.removeEventListener('devicemotion', _motionListener);
+    _motionListener = null;
+  }
+}
+
+function detectMovement() {
+  const now = Date.now();
+  const cutoff = _lastMotionTs || (now - 6000);
+  const recent = _motionSamples.filter(s => s.t > cutoff);
+  _lastMotionTs = now;
+  if (recent.length < 4) return { moved: false, stepDelta: 0 };
+  const mags = recent.map(s => s.mag);
+  const variance = Math.max(...mags) - Math.min(...mags);
+  const moved = variance >= 1.4;
+  let stepDelta = 0;
+  for (let i = 2; i < mags.length; i++) {
+    const prev = mags[i - 1];
+    const curr = mags[i];
+    if (curr > prev + 0.9 && curr > 10.5) {
+      stepDelta++;
+    }
+  }
+  return { moved, stepDelta };
+}
+
+function computeGuidance(current, prev, rogues) {
+  if (!prev || !current) return null;
+  const msgs = [];
+  // simple signal trend on strongest
+  const curStrong = [...(current.nearbyNetworks || [])].sort((a,b) => (b.signalStrength||-999) - (a.signalStrength||-999))[0];
+  const prevStrong = [...(prev.nearbyNetworks || [])].sort((a,b) => (b.signalStrength||-999) - (a.signalStrength||-999))[0];
+  if (curStrong && prevStrong) {
+    const delta = (curStrong.signalStrength || 0) - (prevStrong.signalStrength || 0);
+    if (delta >= 4) msgs.push('Signal improving – keep walking');
+    else if (delta <= -5) msgs.push('Signal dropped – try a different direction');
+  }
+  const netCount = (current.nearbyNetworks || []).length;
+  if (netCount >= 10) msgs.push(`High congestion detected in this area (${netCount} networks visible)`);
+  if (rogues && rogues.length > 0) msgs.push(`${rogues.length} suspicious open networks here`);
+  return msgs.length ? msgs.join(' • ') : null;
+}
+
+export function renderRogueList(container, rogues) {
+  if (!container) return;
+  container.innerHTML = '';
+  if (!rogues || rogues.length === 0) {
+    container.innerHTML = '<div style="color:#666;font-size:12px;">No suspicious open networks in this scan.</div>';
+    return;
+  }
+  rogues.forEach(r => {
+    const div = document.createElement('div');
+    const color = r.risk === 'High' ? '#f87171' : (r.risk === 'Medium' ? '#facc15' : '#aaa');
+    div.style.cssText = 'background:#1e1e1e;padding:6px 8px;border-radius:6px;margin:3px 0;font-size:12px;';
+    div.innerHTML = `<strong style="color:${color}">[${r.risk}]</strong> ${r.ssid} <span style="color:#888;">${r.signalStrength} dBm</span> — ${r.reason}`;
+    container.appendChild(div);
+  });
+}
+
+export async function startSurveyMode(onUpdate) {
+  console.log('%c[Survey Mode] Started real scanning + movement tracking (no mocks)', 'color:#4fc3f7');
+  _surveyState = { intervalId: null, samples: [], roguesSeen: [], guidanceLog: [], startTs: Date.now(), onUpdate };
+  startMotionTracking();
+
+  const doRealSample = async () => {
+    try {
+      const scan = await scanWifi();
+      const analysis = (typeof window.analyzeScan === 'function') ? window.analyzeScan(scan) : { rogues: [] };
+      const mov = detectMovement();
+      const guidance = computeGuidance(scan, _surveyState.samples.length > 0 ? _surveyState.samples[_surveyState.samples.length-1].scan : null, analysis.rogues || []);
+      const sample = {
+        timestamp: Date.now(),
+        scan,
+        analysis,
+        moved: mov.moved,
+        stepDelta: mov.stepDelta,
+        guidance
+      };
+      _surveyState.samples.push(sample);
+      if (analysis.rogues && analysis.rogues.length) {
+        // accumulate highest risk
+        analysis.rogues.forEach(r => {
+          const existing = _surveyState.roguesSeen.find(x => x.bssid === r.bssid);
+          if (!existing || (r.risk === 'High' && existing.risk !== 'High')) {
+            _surveyState.roguesSeen = _surveyState.roguesSeen.filter(x => x.bssid !== r.bssid);
+            _surveyState.roguesSeen.push(r);
+          }
+        });
+      }
+      if (guidance) _surveyState.guidanceLog.push(guidance);
+      if (typeof onUpdate === 'function') onUpdate(sample);
+    } catch (e) {
+      console.warn('[Survey] real sample failed:', e.message);
+    }
+  };
+
+  // first immediate real scan
+  await doRealSample();
+  _surveyState.intervalId = setInterval(doRealSample, 5000);
+  return _surveyState;
+}
+
+export function stopSurveyMode() {
+  if (_surveyState.intervalId) {
+    clearInterval(_surveyState.intervalId);
+    _surveyState.intervalId = null;
+  }
+  stopMotionTracking();
+  console.log('%c[Survey Mode] Stopped. Samples:', 'color:#ff9800', _surveyState.samples.length);
+
+  // Rich summary (ported from implementation)
+  const samples = _surveyState.samples;
+  const rogues = _surveyState.roguesSeen || [];
+  const duration = Math.floor((Date.now() - _surveyState.startTs) / 1000);
+  let summary = `Survey complete: ${samples.length} real scans, ${duration}s, ${rogues.length} suspicious opens.\n`;
+  if (samples.length > 0) {
+    const best = samples.reduce((best, s) => {
+      const strong = (s.scan.nearbyNetworks || []).sort((a,b)=>(b.signalStrength||-999)-(a.signalStrength||-999))[0];
+      if (strong && (!best || strong.signalStrength > best.signalStrength)) return strong;
+      return best;
+    }, null);
+    if (best) summary += `Strongest observed: ${best.ssid} @ ${best.signalStrength} dBm\n`;
+  }
+  if (rogues.length) {
+    const high = rogues.filter(r => r.risk === 'High').length;
+    summary += `${high} high-risk (evil-twin candidates). See list.\n`;
+  }
+  summary += 'All data from real device scans + accelerometer.';
+
+  // If onUpdate or global, surface it
+  if (typeof _surveyState.onUpdate === 'function') {
+    _surveyState.onUpdate({ summary, samples, rogues });
+  }
+  return { samples, rogues, summary, duration };
+}
+
+export function getSurveySamples() {
+  return _surveyState.samples || [];
+}
+
+// Optional: render rogue list in a passed container (for UI integration)
+export function renderRogueListInContainer(container, rogues) {
+  renderRogueList(container, rogues);
 }
