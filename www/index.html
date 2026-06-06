@@ -3,33 +3,116 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WiFi Analyzer</title>
+  <title>WiFi Analyzer - Demo</title>
   <style>
-    body { font-family: system-ui, sans-serif; background: #121212; color: #fff; padding: 20px; }
-    h1 { color: #4fc3f7; }
-    .placeholder { background: #1e1e1e; padding: 20px; border-radius: 8px; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #121212;
+      color: #fff;
+      padding: 24px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    h1 { color: #4fc3f7; margin-bottom: 8px; }
+    .card {
+      background: #1e1e1e;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    button {
+      background: #4fc3f7;
+      color: #121212;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: 600;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+    button:hover { background: #29b6f6; }
+    .result {
+      background: #2a2a2a;
+      padding: 16px;
+      border-radius: 8px;
+      white-space: pre-wrap;
+      font-family: monospace;
+      font-size: 14px;
+      margin-top: 16px;
+      display: none;
+    }
+    .status {
+      color: #4fc3f7;
+      font-weight: 500;
+    }
   </style>
 </head>
 <body>
   <h1>WiFi Analyzer</h1>
-  <p>Capacitor Android App - Foundation initialized.</p>
-  <div class="placeholder">
-    <p>UI will be built in Phase 1-3. Current focus: Analysis engine + Native plugin.</p>
-    <p>Open the app in Android Studio after running <code>npx cap open android</code>.</p>
-  </div>
-  <script type="module">
-    import { scanWifi } from '../js/wifi-scanner.js';
-    import { analyzeScan } from '../js/wifi-analyzer.js';
+  <p style="color:#aaa; margin-bottom:24px;">Phase 1 Demo • Browser Test Mode</p>
+
+  <div class="card">
+    <h3 style="margin-top:0;">Browser Mock Test</h3>
+    <p>This uses fake data so you can test the analysis engine without Android.</p>
+    <button id="testBtn">Run Test Scan (Mock Data)</button>
     
-    // Demo button for testing in browser
-    window.testScan = async () => {
-      const result = await scanWifi();
-      const analysis = analyzeScan(result);
-      console.log('Scan Result:', result);
-      console.log('Analysis:', analysis);
-      alert('Health Score: ' + analysis.healthScore + '\nIssues: ' + analysis.issues.join(', '));
-    };
+    <div id="resultBox" class="result"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0; color:#ff9800;">Next Step: Real Android Testing</h3>
+    <p><strong>1.</strong> Run these commands in PowerShell:</p>
+    <pre style="background:#2a2a2a; padding:12px; border-radius:6px; overflow-x:auto;">cd C:\Users\ccars\Projects\wifi-analyzer
+npx cap add android
+npx cap sync android
+npx cap open android</pre>
+    <p><strong>2.</strong> In Android Studio: Build &amp; run on a <strong>physical Android phone</strong>.</p>
+    <p><strong>3.</strong> Grant Location permission when asked.</p>
+    <p style="color:#4fc3f7; font-size:0.95em;">Real WiFi networks will appear once the native plugin is running on device.</p>
+  </div>
+
+  <script>
+    // Make test function global so onclick works reliably
+    async function runTestScan() {
+      const resultBox = document.getElementById('resultBox');
+      const btn = document.getElementById('testBtn');
+      
+      btn.disabled = true;
+      btn.textContent = 'Scanning...';
+      resultBox.style.display = 'block';
+      resultBox.innerHTML = 'Running analysis engine with mock data...';
+
+      try {
+        // Dynamically import the modules (works better than type=module in some cases)
+        const scanner = await import('./js/wifi-scanner.js');
+        const analyzer = await import('./js/wifi-analyzer.js');
+
+        const scanResult = await scanner.scanWifi();
+        const analysis = analyzer.analyzeScan(scanResult);
+
+        let html = `<strong>Health Score:</strong> ${analysis.healthScore}/100<br><br>`;
+        html += `<strong>Issues Detected:</strong> ${analysis.issues.length > 0 ? analysis.issues.join(', ') : 'None'}<br><br>`;
+        html += `<strong>Feedback:</strong><br>`;
+        analysis.feedback.forEach(f => {
+          html += `• ${f}<br>`;
+        });
+
+        resultBox.innerHTML = html;
+      } catch (err) {
+        resultBox.innerHTML = `<span style="color:#f44336">Error:</span> ${err.message}<br><br>Tip: Make sure you are running this from the wifi-analyzer folder and that node_modules exists.`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Run Test Scan (Mock Data)';
+      }
+    }
+
+    // Attach click handler
+    document.getElementById('testBtn').addEventListener('click', runTestScan);
+
+    // Also expose globally in case onclick is needed
+    window.runTestScan = runTestScan;
   </script>
-  <button onclick="testScan()">Test Scan (Browser Mock)</button>
 </body>
 </html>
