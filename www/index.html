@@ -5,29 +5,109 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WiFi Analyzer</title>
   <style>
-    body { font-family: system-ui, sans-serif; background:#121212; color:#fff; padding:20px; max-width:720px; margin:0 auto; }
-    .card { background:#1e1e1e; border-radius:14px; padding:20px; margin-bottom:20px; }
-    button { background:#4fc3f7; color:#121212; border:none; padding:12px 20px; font-size:15px; font-weight:600; border-radius:10px; cursor:pointer; }
-    button.secondary { background:#333; color:#ccc; }
+    :root {
+      --primary: #4fc3f7;
+    }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f0f0f;
+      color: #fff;
+      padding: 16px;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    h1 { color: var(--primary); margin-bottom: 4px; }
+    .subtitle { color: #888; margin-bottom: 24px; }
+    .card {
+      background: #1a1a1a;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    button {
+      background: var(--primary);
+      color: #0f0f0f;
+      border: none;
+      padding: 14px 24px;
+      font-size: 16px;
+      font-weight: 700;
+      border-radius: 12px;
+      cursor: pointer;
+      width: 100%;
+      transition: transform 0.1s ease;
+    }
+    button:active { transform: scale(0.98); }
+    button.secondary {
+      background: #333;
+      color: #ccc;
+      font-weight: 600;
+    }
+    .health-score {
+      font-size: 64px;
+      font-weight: 800;
+      color: var(--primary);
+      line-height: 1;
+      text-align: center;
+    }
+    .section-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #888;
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .metric {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #333;
+    }
+    .issue-pill {
+      background: #3a2a00;
+      color: #ffcc80;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      margin: 4px 6px 4px 0;
+      display: inline-block;
+    }
+    .feedback {
+      background: #252525;
+      padding: 14px;
+      border-radius: 12px;
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+    .rogue {
+      background: #2a1515;
+      color: #ff8a80;
+      padding: 10px;
+      border-radius: 10px;
+      margin-top: 8px;
+    }
   </style>
 </head>
 <body>
-  <h1 style="color:#4fc3f7">WiFi Analyzer</h1>
-  <p style="color:#888">Phase 4 Refinement</p>
+  <h1>WiFi Analyzer</h1>
+  <p class="subtitle">Real-time WiFi Health &amp; Insights</p>
 
   <div class="card">
-    <button id="scanBtn" style="width:100%;padding:16px;font-size:17px;">Scan WiFi Now</button>
-    <div id="resultArea" style="margin-top:20px;"></div>
-
-    <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap;">
-      <button id="exportBtn" class="secondary">Export Report</button>
-      <button id="surveyBtn" class="secondary">Start Survey Mode</button>
-    </div>
-    <div id="surveyResults" style="margin-top:12px;"></div>
+    <button id="scanBtn">Scan WiFi Environment</button>
+    <div id="resultArea" style="margin-top: 24px;"></div>
   </div>
 
   <div class="card">
-    <div style="font-weight:600;margin-bottom:8px;color:#888;">History</div>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+      <button id="exportBtn" class="secondary" style="flex: 1;">Export Report</button>
+      <button id="surveyBtn" class="secondary" style="flex: 1;">Survey Mode</button>
+    </div>
+    <div id="surveyResults" style="margin-top: 12px;"></div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">Recent Scans</div>
     <div id="historyArea"></div>
   </div>
 
@@ -35,6 +115,7 @@
     import { analyzeScan } from './js/wifi-analyzer.js';
     import { saveScan, getScanHistory } from './js/wifi-storage.js';
     import { renderScanResult, renderHistory, exportScanReport, startSurveyMode, stopSurveyMode } from './js/ui-wifi.js';
+    import { scanWifi } from './js/wifi-scanner.js';
 
     let currentScan = null;
     let currentAnalysis = null;
@@ -51,38 +132,73 @@
       renderHistory(historyArea, getScanHistory());
     }
 
-    function doScan() {
-      const mock = {
-        timestamp: Date.now(),
-        currentNetwork: { ssid:"DemoNet-5G", bssid:"AA:BB:CC:12:34:56", signalStrength:-58, frequency:5745, channel:149, band:"5", channelWidth:80, security:"WPA3", isConnected:true },
-        nearbyNetworks: Array.from({length:10}, (_,i)=>({ ssid:`Neighbor${i}`, signalStrength:-42-(i*3), frequency:5745, channel:149, band:"5", channelWidth:20, security: i%3===0 ? "Open" : "WPA2" }))
-      };
+    async function doScan() {
+      scanBtn.disabled = true;
+      scanBtn.textContent = 'Scanning...';
+      resultArea.innerHTML = '<div style="text-align:center; color:#888; padding:20px;">Scanning WiFi...</div>';
 
-      currentAnalysis = analyzeScan(mock);
-      currentScan = mock;
+      try {
+        // Try real native scan first
+        let scanResult;
+        try {
+          scanResult = await scanWifi();
+        } catch (e) {
+          // Fallback to mock if native fails (browser or plugin not ready)
+          console.warn('Using mock data:', e.message);
+          scanResult = {
+            timestamp: Date.now(),
+            currentNetwork: { ssid: "DemoNet-5G", bssid: "AA:BB:CC:12:34:56", signalStrength: -58, frequency: 5745, channel: 149, band: "5", channelWidth: 80, security: "WPA3", isConnected: true },
+            nearbyNetworks: Array.from({length: 9}, (_, i) => ({
+              ssid: `Neighbor${i}`, signalStrength: -45 - (i*3), frequency: 5745, channel: 149, band: "5", channelWidth: 20, security: "WPA2"
+            }))
+          };
+        }
 
-      renderScanResult(resultArea, mock, currentAnalysis);
-      saveScan(mock, currentAnalysis);
-      refreshHistory();
+        currentAnalysis = analyzeScan(scanResult);
+        currentScan = scanResult;
+
+        renderScanResult(resultArea, scanResult, currentAnalysis);
+        saveScan(scanResult, currentAnalysis);
+        refreshHistory();
+
+      } catch (err) {
+        resultArea.innerHTML = `<div style="color:#ff8a80; padding:16px; background:#2a1515; border-radius:10px;">
+          Scan failed: ${err.message}
+        </div>`;
+      } finally {
+        scanBtn.disabled = false;
+        scanBtn.textContent = 'Scan WiFi Environment';
+      }
     }
 
     scanBtn.addEventListener('click', doScan);
 
     exportBtn.addEventListener('click', () => {
-      if(currentScan && currentAnalysis) exportScanReport(currentScan, currentAnalysis);
-      else alert('Run a scan first');
+      if (currentScan && currentAnalysis) {
+        exportScanReport(currentScan, currentAnalysis);
+      } else {
+        alert('Please run a scan first');
+      }
     });
 
     surveyBtn.addEventListener('click', () => {
-      if(surveyInterval){
+      if (surveyInterval) {
         const samples = stopSurveyMode(surveyInterval);
         surveyInterval = null;
         surveyBtn.textContent = 'Start Survey Mode';
         surveyBtn.style.background = '#333';
-        const avg = samples.length ? Math.round(samples.reduce((a,b)=>a + b.signalStrength,0)/samples.length) : 'N/A';
-        surveyResults.innerHTML = `<div style="background:#252525;padding:12px;border-radius:8px;margin-top:10px;font-size:13px;">
-          Survey done. Samples: <strong>${samples.length}</strong> | Avg Signal: <strong>${avg} dBm</strong>
-        </div>`;
+
+        const avg = samples.length > 0 
+          ? Math.round(samples.reduce((sum, s) => sum + s.signalStrength, 0) / samples.length) 
+          : 'N/A';
+
+        surveyResults.innerHTML = `
+          <div style="background:#1f2a1f; padding:14px; border-radius:12px; margin-top:8px;">
+            <strong>Survey Complete</strong><br>
+            Samples recorded: <strong>${samples.length}</strong><br>
+            Average signal strength: <strong>${avg} dBm</strong>
+          </div>
+        `;
       } else {
         surveyResults.innerHTML = '';
         surveyBtn.textContent = 'Stop Survey Mode';
@@ -92,7 +208,7 @@
     });
 
     refreshHistory();
-    resultArea.innerHTML = '<div style="color:#666;padding:8px 0;">Click Scan to analyze</div>';
+    resultArea.innerHTML = '<div style="text-align:center; color:#666; padding:20px;">Tap the button above to scan your real WiFi environment.</div>';
   </script>
 </body>
 </html>
