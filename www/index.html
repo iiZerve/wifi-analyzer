@@ -68,7 +68,6 @@
         scanBtn.disabled = true;
         scanBtn.textContent = 'Scanning...';
 
-        // Build mock data
         const mock = {
           timestamp: Date.now(),
           currentNetwork: {
@@ -99,7 +98,7 @@
         refreshHistory();
 
       } catch (err) {
-        showError('Error running scan:\n' + err.message + '\n\nTip: Try running a local server (see below) or use the Android app.');
+        showError('Error running scan:\n' + err.message);
         console.error(err);
       } finally {
         scanBtn.disabled = false;
@@ -132,18 +131,8 @@
       }
     });
 
-    // Initial load
     refreshHistory();
-
-    // Helpful message
     resultArea.innerHTML = '<div style="color:#666; padding:8px 0;">Click "Scan WiFi Now" to test the analysis engine.</div>';
   </script>
-
-  <div style="margin-top:30px; font-size:13px; color:#666; line-height:1.5;">
-    <strong>Note:</strong> If the button still does nothing, your browser is blocking ES module imports because you're opening the file directly.<br><br>
-    <strong>Recommended fix:</strong> Run this command in PowerShell from the wifi-analyzer folder:<br>
-    <code style="background:#222; padding:4px 8px; border-radius:4px;">npx serve www</code><br>
-    Then open <strong>http://localhost:3000</strong> in your browser.
-  </div>
 </body>
 </html>
