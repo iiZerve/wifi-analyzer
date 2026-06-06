@@ -9,12 +9,11 @@
     .card { background:#1e1e1e; border-radius:14px; padding:20px; margin-bottom:20px; }
     button { background:#4fc3f7; color:#121212; border:none; padding:12px 20px; font-size:15px; font-weight:600; border-radius:10px; cursor:pointer; }
     button.secondary { background:#333; color:#ccc; }
-    .survey-result { background:#252525; padding:12px; border-radius:8px; margin-top:12px; font-size:13px; }
   </style>
 </head>
 <body>
   <h1 style="color:#4fc3f7">WiFi Analyzer</h1>
-  <p style="color:#888">Refined Analysis + Phase 4 Features</p>
+  <p style="color:#888">Phase 4 + Android Ready</p>
 
   <div class="card">
     <button id="scanBtn" style="width:100%; padding:16px; font-size:17px;">Scan WiFi Now</button>
@@ -35,7 +34,7 @@
   <script type="module">
     import { analyzeScan } from './js/wifi-analyzer.js';
     import { saveScan, getScanHistory } from './js/wifi-storage.js';
-    import { renderScanResult, renderHistory, exportScanReport, startSurveyMode, stopSurveyMode, getSurveySamples } from './js/ui-wifi.js';
+    import { renderScanResult, renderHistory, exportScanReport, startSurveyMode, stopSurveyMode } from './js/ui-wifi.js';
 
     let currentScan = null;
     let currentAnalysis = null;
@@ -55,26 +54,8 @@
     function doScan() {
       const mock = {
         timestamp: Date.now(),
-        currentNetwork: {
-          ssid: "DemoNet-5G",
-          bssid: "AA:BB:CC:12:34:56",
-          signalStrength: -58,
-          frequency: 5745,
-          channel: 149,
-          band: "5",
-          channelWidth: 80,
-          security: "WPA3",
-          isConnected: true
-        },
-        nearbyNetworks: Array.from({length: 9}, (_, i) => ({
-          ssid: `Neighbor${i}`,
-          signalStrength: -45 - (i*4),
-          frequency: 5745,
-          channel: 149,
-          band: "5",
-          channelWidth: 20,
-          security: "WPA2"
-        }))
+        currentNetwork: { ssid: "DemoNet-5G", bssid: "AA:BB:CC:12:34:56", signalStrength: -58, frequency: 5745, channel: 149, band: "5", channelWidth: 80, security: "WPA3", isConnected: true },
+        nearbyNetworks: Array.from({length: 9}, (_, i) => ({ ssid: `Neighbor${i}`, signalStrength: -45-(i*4), frequency: 5745, channel: 149, band: "5", channelWidth: 20, security: "WPA2" }))
       };
 
       currentAnalysis = analyzeScan(mock);
@@ -88,11 +69,8 @@
     scanBtn.addEventListener('click', doScan);
 
     exportBtn.addEventListener('click', () => {
-      if (currentScan && currentAnalysis) {
-        exportScanReport(currentScan, currentAnalysis);
-      } else {
-        alert('Run a scan first to export a report.');
-      }
+      if (currentScan && currentAnalysis) exportScanReport(currentScan, currentAnalysis);
+      else alert('Run a scan first');
     });
 
     surveyBtn.addEventListener('click', () => {
@@ -102,31 +80,22 @@
         surveyBtn.textContent = 'Start Survey Mode';
         surveyBtn.style.background = '#333';
 
-        // Show summary of recorded samples
-        const avgSignal = samples.length > 0 
-          ? Math.round(samples.reduce((sum, s) => sum + s.signalStrength, 0) / samples.length) 
-          : 'N/A';
-
-        surveyResults.innerHTML = `
-          <div class="survey-result">
-            <strong>Survey Complete</strong><br>
-            Samples recorded: <strong>${samples.length}</strong><br>
-            Average signal: <strong>${avgSignal} dBm</strong><br>
-            <small style="color:#888;">Data ready for export or further analysis.</small>
-          </div>
-        `;
+        const avg = samples.length > 0 ? Math.round(samples.reduce((a,b)=>a+b.signalStrength,0)/samples.length) : 'N/A';
+        surveyResults.innerHTML = `<div style="background:#252525;padding:12px;border-radius:8px;margin-top:12px;font-size:13px;">
+          <strong>Survey Complete</strong><br>
+          Samples: <strong>${samples.length}</strong><br>
+          Average Signal: <strong>${avg} dBm</strong>
+        </div>`;
       } else {
         surveyResults.innerHTML = '';
         surveyBtn.textContent = 'Stop Survey Mode';
         surveyBtn.style.background = '#c62828';
-        surveyInterval = startSurveyMode((sample) => {
-          // Live update (optional)
-        });
+        surveyInterval = startSurveyMode();
       }
     });
 
     refreshHistory();
-    resultArea.innerHTML = '<div style="color:#666; padding:8px 0;">Click the button above to run an analysis.</div>';
+    resultArea.innerHTML = '<div style="color:#666;padding:8px 0;">Click "Scan WiFi Now" to begin.</div>';
   </script>
 </body>
 </html>
