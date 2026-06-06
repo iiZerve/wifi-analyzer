@@ -1,1 +1,31 @@
- the rebranded package 
+{
+  "name": "wifi-analyzer",
+  "version": "1.0.0",
+  "description": "WiFi Analyzer - Advanced local WiFi diagnostics for Android",
+  "main": "index.js",
+  "scripts": {
+    "cap": "npx cap",
+    "sync": "npx cap sync",
+    "prepare:web": "node -e \"const fs=require('fs'),path=require('path'); fs.copyFileSync('index.html','www/index.html'); ['css','js'].forEach(d=>{ if(!fs.existsSync('www/'+d)) fs.mkdirSync('www/'+d,{recursive:true}); fs.readdirSync(d).forEach(f=>fs.copyFileSync(path.join(d,f),path.join('www',d,f))); }); console.log('web assets prepared');\"",
+    "build:android:debug": "node scripts/build-android.js debug",
+    "build:android:release": "node scripts/build-android.js release",
+    "open:android": "npx cap open android",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "network",
+    "diagnostics",
+    "monitoring",
+    "capacitor",
+    "android"
+  ],
+  "author": "iiZerve",
+  "license": "ISC",
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}
