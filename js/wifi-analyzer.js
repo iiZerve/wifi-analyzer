@@ -1,4 +1,4 @@
-// WiFi Analysis Engine - Phase 4 Enhancements
+// WiFi Analysis Engine - Enhanced with real rogue detection (severity levels), no mocks
 
 import { WIFI_THRESHOLDS } from './config.js';
 
@@ -53,25 +53,27 @@ export function analyzeScan(result) {
     score -= 12;
   }
 
-  // === Phase 4: Rogue Network Detection ===
-  const suspiciousNetworks = nearbyNetworks.filter(n => {
-    const name = n.ssid.toLowerCase();
-    return (name.includes('free') || name.includes('public') || name.includes('guest')) && 
-           n.security.toLowerCase().includes('open');
-  });
-  if (suspiciousNetworks.length > 0 && currentNetwork) {
-    issues.push('possible_rogue_networks');
-    score -= 10;
+  // === Enhanced Rogue Network Detection (High/Med/Low severity, evil twin heuristics) ===
+  const rogues = classifyRogueNetworks(nearbyNetworks);
+  if (rogues.length > 0) {
+    const high = rogues.filter(r => r.risk === 'High').length;
+    if (high > 0) {
+      issues.push('possible_rogue_networks_high_risk');
+      score -= 25;
+    } else {
+      issues.push('possible_rogue_networks');
+      score -= 10;
+    }
   }
 
   score = Math.max(0, Math.min(100, Math.round(score)));
 
-  const feedback = generateFeedback(issues, currentNetwork, nearbyNetworks, suspiciousNetworks);
+  const feedback = generateFeedback(issues, currentNetwork, nearbyNetworks, rogues);
 
-  return { healthScore: score, issues, feedback };
+  return { healthScore: score, issues, feedback, rogues };
 }
 
-export function generateFeedback(issues, current, nearby, suspicious = []) {
+export function generateFeedback(issues, current, nearby, rogues = []) {
   const feedback = [];
 
   if (issues.includes('weak_signal') && current) {
@@ -89,8 +91,9 @@ export function generateFeedback(issues, current, nearby, suspicious = []) {
   if (issues.includes('wide_channel_in_crowded_env')) {
     feedback.push('Using wide channel in crowded area. Narrow channel width for stability.');
   }
-  if (issues.includes('possible_rogue_networks')) {
-    feedback.push(`Warning: ${suspicious.length} suspicious open "free/public/guest" networks detected nearby. Be cautious of evil twin attacks.`);
+  if (issues.includes('possible_rogue_networks_high_risk') || issues.includes('possible_rogue_networks')) {
+    const high = rogues.filter(r => r.risk === 'High').length;
+    feedback.push(`Warning: ${rogues.length} suspicious open networks detected. ${high > 0 ? high + ' high-risk (possible evil twin) — avoid.' : 'Be cautious.'}`);
   }
   if (issues.length === 0) {
     feedback.push('WiFi environment looks healthy.');
@@ -101,4 +104,78 @@ export function generateFeedback(issues, current, nearby, suspicious = []) {
 
 export function calculateHealthScore(result) {
   return analyzeScan(result).healthScore;
+}
+
+// --- Enhanced Rogue / Suspicious Open Network Detection (real data, severity levels) ---
+export function isOpenNetwork(net) {
+  if (!net) return false;
+  const sec = String(net.security || net.capabilities || '').toUpperCase();
+  const hasSecurity = sec.includes('WPA') || sec.includes('RSN') || sec.includes('WEP') ||
+                      sec.includes('SAE') || sec.includes('OWE') || sec.includes('EAP');
+  return !hasSecurity;
+}
+
+function simpleSsidSimilarity(a, b) {
+  if (!a || !b) return false;
+  const aa = a.toLowerCase().trim();
+  const bb = b.toLowerCase().trim();
+  if (aa === bb) return true;
+  if (aa.includes(bb) || bb.includes(aa)) return true;
+  if (Math.abs(aa.length - bb.length) <= 3) {
+    let matches = 0;
+    const len = Math.min(aa.length, bb.length);
+    for (let i = 0; i < len; i++) if (aa[i] === bb[i]) matches++;
+    if (matches / len > 0.85) return true;
+  }
+  return false;
+}
+
+export function classifyRogueNetworks(networks) {
+  if (!networks || networks.length === 0) return [];
+
+  const secured = networks.filter(n => !isOpenNetwork(n) && n.ssid && n.ssid !== '<hidden>');
+  const securedSsids = secured.map(n => n.ssid);
+
+  const rogues = [];
+
+  networks.forEach(net => {
+    if (!isOpenNetwork(net)) return;
+    if (!net.ssid || net.ssid === '<hidden>') return;
+
+    let risk = 'Low';
+    let reason = 'Open network — no encryption detected';
+
+    const isMatch = securedSsids.some(sec => simpleSsidSimilarity(net.ssid, sec));
+    if (isMatch) {
+      risk = 'High';
+      reason = 'SSID matches (or very similar to) a secured network seen in this scan — high evil twin risk';
+    } else {
+      const commonOpen = /guest|public|free|wifi|airport|hotel|cafe|starbucks|airport|library/i.test(net.ssid);
+      const sig = (typeof net.signalStrength === 'number' ? net.signalStrength : net.signal);
+      if ((typeof sig === 'number' && sig >= -55) || commonOpen) {
+        risk = 'Medium';
+        reason = commonOpen ? 'Open network with common public-style name' : 'Open network with strong signal';
+      }
+    }
+
+    rogues.push({
+      ssid: net.ssid,
+      bssid: net.bssid,
+      signalStrength: (typeof net.signalStrength === 'number' ? net.signalStrength : (net.signal || -99)),
+      frequency: net.frequency || 0,
+      channel: net.channel || 0,
+      risk,
+      reason
+    });
+  });
+
+  const riskOrder = { 'High': 3, 'Medium': 2, 'Low': 1 };
+  rogues.sort((a, b) => {
+    const r = (riskOrder[b.risk] || 0) - (riskOrder[a.risk] || 0);
+    const sa = (typeof a.signalStrength === 'number' ? a.signalStrength : -999);
+    const sb = (typeof b.signalStrength === 'number' ? b.signalStrength : -999);
+    return r !== 0 ? r : (sb - sa);
+  });
+
+  return rogues;
 }
