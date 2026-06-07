@@ -389,7 +389,7 @@
           // Keep frame always visible; indicate scanning via hint + empty gauge (number will be drawn inside by drawSpeedometer)
           if (hintEl) hintEl.textContent = 'Scanning (real device)...';
           if (gauge) {
-            drawSpeedometer(gauge, 0);
+            drawSpeedometer(gauge, 0, false);
           }
         } else if (resultArea) {
           resultArea.innerHTML = '<div style="color:#888; text-align:center; padding:20px;">Scanning (real device)...</div>';
@@ -420,11 +420,11 @@
               const elapsed = Date.now() - startTime;
               const t = Math.min(elapsed / duration, 1);
               currentProgress = target * (1 - Math.pow(1 - t, 3));
-              drawSpeedometer(gauge, currentProgress);
+              drawSpeedometer(gauge, currentProgress, true);
               if (t < 1) {
                 requestAnimationFrame(animateGauge);
               } else {
-                drawSpeedometer(gauge, target);
+                drawSpeedometer(gauge, target, true);
               }
             };
             animateGauge();
@@ -763,7 +763,7 @@
         const labelEl = document.getElementById('healthScoreLabel');
         if (labelEl) labelEl.style.color = '#4fc3f7';
         if (gauge) {
-          try { drawSpeedometer(gauge, 0); } catch(e) {}
+          try { drawSpeedometer(gauge, 0, false); } catch(e) {}
         }
         if (hintEl) {
           hintEl.style.display = '';

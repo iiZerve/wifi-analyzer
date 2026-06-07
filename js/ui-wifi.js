@@ -3,7 +3,7 @@
 import { scanWifi } from './wifi-scanner.js';
 import { classifyRogueNetworks } from './wifi-analyzer.js';
 
-function drawSpeedometer(canvas, score) {
+function drawSpeedometer(canvas, score, showNumber = true) {
   const ctx = canvas.getContext('2d');
   const w = canvas.width;
   const h = canvas.height;
@@ -160,31 +160,40 @@ function drawSpeedometer(canvas, score) {
     ctx.stroke();
   }
 
-  // 8. Big glowing percentage in the exact center (the star of the reference image)
-  const displayText = Math.round(score) + '%';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.font = 'bold 52px system-ui, -apple-system, sans-serif';
+  if (showNumber) {
+    // 8. Big glowing percentage in the exact center (the star of the reference image)
+    const displayText = Math.round(score) + '%';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = 'bold 52px system-ui, -apple-system, sans-serif';
 
-  // Neon glow layers (multiple passes for brightness like the reference)
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 18;
-  ctx.fillStyle = '#e0f7ff';
-  ctx.fillText(displayText, cx, cy);
+    // Neon glow layers (multiple passes for brightness like the reference)
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 18;
+    ctx.fillStyle = '#e0f7ff';
+    ctx.fillText(displayText, cx, cy);
 
-  ctx.shadowBlur = 8;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(displayText, cx, cy);
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(displayText, cx, cy);
 
-  // Main crisp text
-  ctx.shadowBlur = 0;
-  ctx.fillStyle = color;
-  ctx.fillText(displayText, cx, cy);
+    // Main crisp text
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = color;
+    ctx.fillText(displayText, cx, cy);
 
-  // Small "HEALTH" label inside top of the display for extra HUD polish (optional but fits reference style)
-  ctx.font = '10px system-ui';
-  ctx.fillStyle = 'rgba(140, 170, 200, 0.7)';
-  ctx.fillText('HEALTH', cx, cy - 28);
+    // Small "HEALTH" label inside top of the display for extra HUD polish (optional but fits reference style)
+    ctx.font = '10px system-ui';
+    ctx.fillStyle = 'rgba(140, 170, 200, 0.7)';
+    ctx.fillText('HEALTH', cx, cy - 28);
+  } else {
+    // For initial/empty state: draw a subtle empty center without the number or full inner HUD details
+    // (keeps the outer gauge looking ready but no 0% text)
+    ctx.fillStyle = 'rgba(10, 17, 31, 0.6)';
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius - 22, 0, Math.PI * 2);
+    ctx.fill();
+  }
 }
 
 export function renderScanResult(container, scanResult, analysis) {
@@ -193,39 +202,41 @@ export function renderScanResult(container, scanResult, analysis) {
 
   // High-tech futuristic gauge (big % inside the canvas center to match the reference).
   const hs = (analysis && typeof analysis.healthScore === 'number') ? analysis.healthScore : 0;
-  const scoreDiv = document.createElement('div');
-  scoreDiv.style.cssText = 'text-align:center; margin-bottom:8px;';
+  if (hs > 0) {
+    const scoreDiv = document.createElement('div');
+    scoreDiv.style.cssText = 'text-align:center; margin-bottom:8px;';
 
-  const labelEl = document.createElement('div');
-  labelEl.style.cssText = 'font-size:12px; color:#4fc3f7; font-weight:600; letter-spacing:1px; margin-bottom:4px; text-transform:uppercase;';
-  labelEl.textContent = 'Health Score';
-  scoreDiv.appendChild(labelEl);
+    const labelEl = document.createElement('div');
+    labelEl.style.cssText = 'font-size:12px; color:#4fc3f7; font-weight:600; letter-spacing:1px; margin-bottom:4px; text-transform:uppercase;';
+    labelEl.textContent = 'Health Score';
+    scoreDiv.appendChild(labelEl);
 
-  const canvas = document.createElement('canvas');
-  canvas.width = 240;
-  canvas.height = 240;
-  canvas.style.cssText = 'display:block; margin:0 auto;';
-  scoreDiv.appendChild(canvas);
+    const canvas = document.createElement('canvas');
+    canvas.width = 240;
+    canvas.height = 240;
+    canvas.style.cssText = 'display:block; margin:0 auto;';
+    scoreDiv.appendChild(canvas);
 
-  container.appendChild(scoreDiv);
+    container.appendChild(scoreDiv);
 
-  let currentProgress = 0;
-  const target = hs;
-  const duration = 4200;
-  const startTime = Date.now();
+    let currentProgress = 0;
+    const target = hs;
+    const duration = 4200;
+    const startTime = Date.now();
 
-  const animateGauge = () => {
-    const elapsed = Date.now() - startTime;
-    const t = Math.min(elapsed / duration, 1);
-    currentProgress = target * (1 - Math.pow(1 - t, 3));
-    drawSpeedometer(canvas, currentProgress);
-    if (t < 1) {
-      requestAnimationFrame(animateGauge);
-    } else {
-      drawSpeedometer(canvas, target);
-    }
-  };
-  animateGauge();
+    const animateGauge = () => {
+      const elapsed = Date.now() - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      currentProgress = target * (1 - Math.pow(1 - t, 3));
+      drawSpeedometer(canvas, currentProgress, true);
+      if (t < 1) {
+        requestAnimationFrame(animateGauge);
+      } else {
+        drawSpeedometer(canvas, target, true);
+      }
+    };
+    animateGauge();
+  }
 
   // Current Network
   if (scanResult.currentNetwork) {
