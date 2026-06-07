@@ -3,25 +3,235 @@
 import { scanWifi } from './wifi-scanner.js';
 import { classifyRogueNetworks } from './wifi-analyzer.js';
 
+function drawSpeedometer(canvas, score) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  const cx = w / 2;
+  const cy = h / 2;                 // true center for high-tech circular HUD gauge
+  const radius = Math.min(w, h) * 0.40;
+
+  ctx.clearRect(0, 0, w, h);
+
+  const p = Math.max(0, Math.min(100, score)) / 100;
+
+  // Health-based neon color (brighter to evoke the reference's glowing cyan/magenta)
+  let color;
+  if (score <= 50) {
+    color = '#ff6b6b';
+  } else if (score <= 74) {
+    color = '#ff9f43';
+  } else if (score <= 89) {
+    color = '#feca57';
+  } else {
+    color = '#00e5ff';  // bright cyan like the reference
+  }
+
+  // === High-tech futuristic circular gauge (inspired by the reference PNG) ===
+  // Outer industrial metal bezel + bolts + struts for 3D mechanical look
+  // Glowing neon progress ring (thick band with simulated glow)
+  // Inner HUD display panel
+  // Big glowing percentage centered inside the ring (like the 67% in reference)
+
+  // 1. Far outer dark metal frame (multiple rings for depth)
+  ctx.strokeStyle = '#0a0f1a';
+  ctx.lineWidth = 18;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius + 22, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#1a2438';
+  ctx.lineWidth = 10;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius + 14, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 2. Bolts / rivets around the outer rim (12 positions, industrial look)
+  ctx.fillStyle = '#2a3548';
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    const bx = cx + Math.cos(a) * (radius + 18);
+    const by = cy + Math.sin(a) * (radius + 18);
+    ctx.beginPath();
+    ctx.arc(bx, by, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    // small highlight
+    ctx.fillStyle = '#3f4a5c';
+    ctx.beginPath();
+    ctx.arc(bx - 1, by - 1, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2a3548';
+  }
+
+  // 3. Main dark gauge track ring (the housing)
+  ctx.strokeStyle = '#111a28';
+  ctx.lineWidth = 28;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 4. Glowing progress ring (thick neon band + glow layers to match reference's bright cyan-pink arc)
+  const startAngle = -Math.PI * 0.9;
+  const endAngle = startAngle + (p * Math.PI * 1.8);  // ~325 degree sweep for full high-tech ring feel
+
+  // Outer soft glow
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 36;
+  ctx.globalAlpha = 0.15;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, startAngle, endAngle, false);
+  ctx.stroke();
+
+  // Mid glow
+  ctx.globalAlpha = 0.35;
+  ctx.lineWidth = 26;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, startAngle, endAngle, false);
+  ctx.stroke();
+
+  // Main bright band
+  ctx.globalAlpha = 0.95;
+  ctx.lineWidth = 16;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, startAngle, endAngle, false);
+  ctx.stroke();
+
+  // Inner highlight edge
+  ctx.strokeStyle = '#ffffff';
+  ctx.globalAlpha = 0.4;
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, startAngle, endAngle, false);
+  ctx.stroke();
+
+  ctx.globalAlpha = 1.0;
+
+  // 5. Inner metal bezel / frame detail
+  ctx.strokeStyle = '#2a3548';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius - 14, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // 6. Small radial tick / HUD marks on the inner ring (for tech detail, not full old labels)
+  ctx.strokeStyle = 'rgba(100, 120, 150, 0.6)';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    const ix = cx + Math.cos(a) * (radius - 18);
+    const iy = cy + Math.sin(a) * (radius - 18);
+    const ox = cx + Math.cos(a) * (radius - 10);
+    const oy = cy + Math.sin(a) * (radius - 10);
+    ctx.beginPath();
+    ctx.moveTo(ix, iy);
+    ctx.lineTo(ox, oy);
+    ctx.stroke();
+  }
+
+  // 7. Center dark HUD display panel (the "screen" where the number lives)
+  ctx.fillStyle = '#0a111f';
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius - 22, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Subtle inner ring on the display
+  ctx.strokeStyle = 'rgba(60, 80, 110, 0.5)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius - 26, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Very subtle HUD grid / data lines inside the center (scifi feel)
+  ctx.strokeStyle = 'rgba(70, 95, 130, 0.25)';
+  ctx.lineWidth = 0.8;
+  for (let i = -2; i <= 2; i++) {
+    const ly = cy + i * 8;
+    ctx.beginPath();
+    ctx.moveTo(cx - (radius - 40), ly);
+    ctx.lineTo(cx + (radius - 40), ly);
+    ctx.stroke();
+  }
+  // a couple vertical too
+  for (let i = -1; i <= 1; i++) {
+    const lx = cx + i * 12;
+    ctx.beginPath();
+    ctx.moveTo(lx, cy - (radius - 45));
+    ctx.lineTo(lx, cy + (radius - 45));
+    ctx.stroke();
+  }
+
+  // 8. Big glowing percentage in the exact center (the star of the reference image)
+  const displayText = Math.round(score) + '%';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = 'bold 52px system-ui, -apple-system, sans-serif';
+
+  // Neon glow layers (multiple passes for brightness like the reference)
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 18;
+  ctx.fillStyle = '#e0f7ff';
+  ctx.fillText(displayText, cx, cy);
+
+  ctx.shadowBlur = 8;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(displayText, cx, cy);
+
+  // Main crisp text
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = color;
+  ctx.fillText(displayText, cx, cy);
+
+  // Small "HEALTH" label inside top of the display for extra HUD polish (optional but fits reference style)
+  ctx.font = '10px system-ui';
+  ctx.fillStyle = 'rgba(140, 170, 200, 0.7)';
+  ctx.fillText('HEALTH', cx, cy - 28);
+}
+
 export function renderScanResult(container, scanResult, analysis) {
   if (!container) return;
   container.innerHTML = '';
 
-  // Health Score
+  // High-tech futuristic gauge (big % inside the canvas center to match the reference).
+  const hs = (analysis && typeof analysis.healthScore === 'number') ? analysis.healthScore : 0;
   const scoreDiv = document.createElement('div');
-  scoreDiv.innerHTML = `
-    <div style="text-align:center; margin-bottom:20px;">
-      <div style="font-size:13px;color:#888;">HEALTH SCORE</div>
-      <div style="font-size:68px;font-weight:800;color:#4fc3f7;line-height:1;">${analysis.healthScore}</div>
-    </div>
-  `;
+  scoreDiv.style.cssText = 'text-align:center; margin-bottom:8px;';
+
+  const labelEl = document.createElement('div');
+  labelEl.style.cssText = 'font-size:12px; color:#4fc3f7; font-weight:600; letter-spacing:1px; margin-bottom:4px; text-transform:uppercase;';
+  labelEl.textContent = 'Health Score';
+  scoreDiv.appendChild(labelEl);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 240;
+  canvas.height = 240;
+  canvas.style.cssText = 'display:block; margin:0 auto;';
+  scoreDiv.appendChild(canvas);
+
   container.appendChild(scoreDiv);
+
+  let currentProgress = 0;
+  const target = hs;
+  const duration = 4200;
+  const startTime = Date.now();
+
+  const animateGauge = () => {
+    const elapsed = Date.now() - startTime;
+    const t = Math.min(elapsed / duration, 1);
+    currentProgress = target * (1 - Math.pow(1 - t, 3));
+    drawSpeedometer(canvas, currentProgress);
+    if (t < 1) {
+      requestAnimationFrame(animateGauge);
+    } else {
+      drawSpeedometer(canvas, target);
+    }
+  };
+  animateGauge();
 
   // Current Network
   if (scanResult.currentNetwork) {
     const net = scanResult.currentNetwork;
     const netDiv = document.createElement('div');
-    netDiv.style.cssText = 'background:#1e1e1e;padding:16px;border-radius:12px;margin-bottom:20px;';
+    netDiv.style.cssText = 'background:transparent;padding:16px;border-radius:12px;margin-bottom:20px;';
     netDiv.innerHTML = `
       <strong>Connected to:</strong> ${net.ssid}<br>
       <span style="color:#aaa;font-size:13px;">${net.band} GHz • Ch ${net.channel} • ${net.signalStrength} dBm • ${net.security}</span>
@@ -46,7 +256,7 @@ export function renderScanResult(container, scanResult, analysis) {
   fbDiv.innerHTML = '<strong>Recommendations</strong>';
   analysis.feedback.forEach(text => {
     const p = document.createElement('div');
-    p.style.cssText = 'background:#252525;padding:14px 16px;border-radius:10px;margin-top:10px;line-height:1.5;';
+    p.style.cssText = 'background:transparent;padding:14px 16px;border-radius:10px;margin-top:10px;line-height:1.5;';
     p.textContent = text;
     fbDiv.appendChild(p);
   });
@@ -64,13 +274,14 @@ export function renderHistory(container, history) {
     const el = document.createElement('div');
     el.style.cssText = 'background:#1e1e1e;padding:10px 14px;border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;';
     const time = new Date(item.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
-    el.innerHTML = `<div>${time} - ${item.currentNetwork?.ssid || 'No connection'}</div><div style="font-weight:700;color:#4fc3f7;">${item.healthScore || '--'}</div>`;
+    const hs = (item && typeof item.healthScore === 'number') ? item.healthScore : '--';
+    el.innerHTML = `<div>${time} - ${item.currentNetwork?.ssid || 'No connection'}</div><div style="font-weight:700;color:#4fc3f7;">${hs}</div>`;
     container.appendChild(el);
   });
 }
 
 // Phase 4: Export report as JSON (richer)
-export function exportScanReport(scanResult, analysis) {
+export async function exportScanReport(scanResult, analysis) {
   const report = {
     exportedAt: new Date().toISOString(),
     healthScore: analysis.healthScore,
@@ -80,12 +291,31 @@ export function exportScanReport(scanResult, analysis) {
     nearbyNetworks: scanResult.nearbyNetworks,
     rogues: analysis.rogues || []
   };
+  const json = JSON.stringify(report, null, 2);
+  const filename = `wifi-report-${Date.now()}.json`;
 
-  const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+  const cap = (typeof window !== 'undefined' && window.Capacitor) ? window.Capacitor : null;
+  if (cap && cap.Plugins && cap.Plugins.Filesystem) {
+    try {
+      await cap.Plugins.Filesystem.writeFile({
+        path: filename,
+        data: json,
+        directory: 'DOCUMENTS',
+        encoding: 'utf8'
+      });
+      alert('Report saved to Documents/' + filename);
+      return;
+    } catch (e) {
+      console.error('Filesystem export failed, falling back to download', e);
+    }
+  }
+
+  // Fallback to browser download
+  const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `wifi-report-${Date.now()}.json`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -141,11 +371,7 @@ function detectMovement() {
   const moved = variance >= 1.4;
   let stepDelta = 0;
   for (let i = 2; i < mags.length; i++) {
-    const prev = mags[i - 1];
-    const curr = mags[i];
-    if (curr > prev + 0.9 && curr > 10.5) {
-      stepDelta++;
-    }
+    if (mags[i] > mags[i-1] + 0.9 && mags[i] > 10.5) stepDelta++;
   }
   return { moved, stepDelta };
 }
@@ -267,4 +493,33 @@ export function getSurveySamples() {
 // Optional: render rogue list in a passed container (for UI integration)
 export function renderRogueListInContainer(container, rogues) {
   renderRogueList(container, rogues);
+}
+
+// === Network Discovery device list rendering helper (supports manufacturer + good hostname display)
+export function renderDiscoveredDeviceRow(device) {
+  const div = document.createElement('div');
+  const highlight = device.isCurrentDevice ? ' style="background:#1a2a1a; padding:4px; border-radius:4px;"' : '';
+  const bestName = device.hostname && device.hostname !== device.ipAddress ? device.hostname : null;
+  let html = `<div${highlight}>`;
+  if (bestName) {
+    html += `<strong style="color:#4fc3f7;">${bestName}</strong> <small style="color:#888;">${device.ipAddress || ''}</small>`;
+  } else {
+    html += `<strong>${device.ipAddress || ''}</strong>`;
+  }
+  if (device.macAddress && device.macAddress !== "N/A (self)") html += ` — ${device.macAddress}`;
+
+  const methods = (device.detectionMethods || []).join(', ');
+  html += ` <small style="color:#888;">[${methods || 'unknown'}]</small>`;
+
+  const mfr = (device.manufacturer && device.manufacturer !== "Unknown") ? device.manufacturer : null;
+  const dtype = (device.deviceType && device.deviceType !== "Unknown Device") ? device.deviceType : null;
+  if (mfr || dtype) {
+    const label = [mfr, dtype].filter(Boolean).join(" ");
+    html += ` <span style="color:#f59e0b; font-size:11px;">${label}</span>`;
+  }
+  if (device.confidence) html += ` <small>(${device.confidence})</small>`;
+  if (device.isCurrentDevice) html += ' <strong>(this device)</strong>';
+  html += '</div>';
+  div.innerHTML = html;
+  return div.firstElementChild || div;
 }

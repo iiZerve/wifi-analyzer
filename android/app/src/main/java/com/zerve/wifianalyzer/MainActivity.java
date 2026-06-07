@@ -9,6 +9,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
 import com.zerve.wifianalyzer.plugins.wifi.WifiScannerPlugin;
+import com.zerve.wifianalyzer.plugins.discovery.NetworkDiscoveryPlugin;
 
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "MainActivity";
@@ -16,10 +17,15 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        // Register custom Capacitor plugin for real WiFi scanning
+        Log.d(TAG, "MainActivity.onCreate: BEFORE super - registering WifiScannerPlugin");
+        // Register the custom WifiScanner plugin early (before super) so it is available to the Capacitor bridge.
         registerPlugin(WifiScannerPlugin.class);
+        // Register NetworkDiscoveryPlugin for local device discovery (ARP-based)
+        registerPlugin(NetworkDiscoveryPlugin.class);
+        Log.d(TAG, "MainActivity.onCreate: AFTER registerPlugin, BEFORE super.onCreate");
+
+        super.onCreate(savedInstanceState);
+        Log.d(TAG, "MainActivity.onCreate: AFTER super.onCreate");
 
         // Request precise location permission (required for WiFi scanning on modern Android)
         boolean needsLocation = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)

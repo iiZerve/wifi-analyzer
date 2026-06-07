@@ -1,49 +1,78 @@
 // WiFi Scanner Bridge Layer
-// Real implementation using custom Capacitor native plugin (no mocks in main flow)
-
-import { registerPlugin } from '@capacitor/core';
-
-const WifiScanner = registerPlugin('WifiScanner');
+// Real implementation using custom Capacitor native plugin (no mocks in main flow).
+// Relies on the global window.Capacitor injected by the native bridge.
 
 export async function scanWifi() {
   try {
     const cap = (typeof window !== 'undefined' && window.Capacitor) ? window.Capacitor : null;
-    if (!cap || !cap.Plugins || !cap.Plugins.WifiScanner) {
-      // Browser / no native: clear error per plan (no simulated data)
-      throw new Error('Real WiFi scanning requires the Android app (Capacitor native bridge). This feature is not available when running in browser or without the native plugin.');
+
+    let result;
+
+    if (cap && typeof cap.nativePromise === 'function') {
+      result = await cap.nativePromise('WifiScanner', 'scanWifi', {});
+    } else if (cap && cap.Plugins && cap.Plugins.WifiScanner && typeof cap.Plugins.WifiScanner.scanWifi === 'function') {
+      result = await cap.Plugins.WifiScanner.scanWifi();
+    } else if (cap && typeof cap.registerPlugin === 'function') {
+      const proxy = cap.registerPlugin('WifiScanner');
+      if (proxy && typeof proxy.scanWifi === 'function') {
+        result = await proxy.scanWifi();
+      }
     }
 
-    const result = await WifiScanner.scanWifi();
-    if (!result || result.success === false) {
-      const msg = (result && (result.message || result.error)) || 'Unknown scan failure';
+    if (!result) {
+      throw new Error('Real WiFi scanning requires the Android app (Capacitor native bridge).');
+    }
+
+    if (result.success === false) {
+      const msg = result.message || result.error || 'Unknown failure from native WiFi scan';
       throw new Error(msg);
     }
 
-    // Normalize to target's expected fields (signalStrength) while keeping 'signal' for compatibility
+    // Normalize (real data only). Native provides currentNetwork when the device is connected.
+    const rawNetworks = (result.networks || []).map(n => ({
+      ssid: n.ssid || '<hidden>',
+      bssid: n.bssid || '',
+      signalStrength: (typeof n.signal === 'number' ? n.signal : (n.signalStrength || -99)),
+      signal: (typeof n.signal === 'number' ? n.signal : (n.signalStrength || -99)),
+      frequency: n.frequency || 0,
+      channel: n.channel || 0,
+      channelWidth: n.channelWidth || 0,
+      security: n.security || ((n.capabilities || '').includes('WPA') || (n.capabilities || '').includes('WEP') || (n.capabilities || '').includes('SAE') ? 'Secured' : 'Open'),
+      capabilities: n.capabilities || '',
+      band: n.band || (n.frequency >= 5170 && n.frequency <= 5825 ? '5' : (n.frequency >= 5925 ? '6' : (n.frequency >= 2412 && n.frequency <= 2484 ? '2.4' : 'unknown')))
+    }));
+
+    let currentNetwork = result.currentNetwork || null;
+
+    // Enrich / normalize currentNetwork from native (handles Android 10+ redacted SSID cases like "<unknown ssid>" or "<connected>")
+    if (currentNetwork && currentNetwork.bssid) {
+      const match = rawNetworks.find(n => n.bssid && n.bssid.toLowerCase() === String(currentNetwork.bssid).toLowerCase());
+      if (match) {
+        currentNetwork = { 
+          ...match, 
+          ...currentNetwork, 
+          signalStrength: (typeof currentNetwork.signalStrength === 'number' ? currentNetwork.signalStrength : match.signalStrength),
+          ssid: (currentNetwork.ssid && currentNetwork.ssid !== '<connected>' && currentNetwork.ssid !== '<unknown>') 
+                ? currentNetwork.ssid 
+                : (match.ssid || currentNetwork.ssid || '<connected>')
+        };
+      }
+      if (currentNetwork.isConnected !== false) {
+        currentNetwork.isConnected = true;
+      }
+    }
+
     const normalized = {
       timestamp: result.lastScanTimestamp || Date.now(),
       lastScanTimestamp: result.lastScanTimestamp || Date.now(),
       count: result.count || 0,
       scanStarted: result.scanStarted || false,
-      nearbyNetworks: (result.networks || []).map(n => ({
-        ssid: n.ssid || '<hidden>',
-        bssid: n.bssid || '',
-        signalStrength: (typeof n.signal === 'number' ? n.signal : (n.signalStrength || -99)),
-        signal: (typeof n.signal === 'number' ? n.signal : (n.signalStrength || -99)),
-        frequency: n.frequency || 0,
-        channel: n.channel || 0,
-        channelWidth: n.channelWidth || 0,
-        security: (n.capabilities || '').includes('WPA') || (n.capabilities || '').includes('WEP') || (n.capabilities || '').includes('SAE') ? 'Secured' : 'Open',
-        capabilities: n.capabilities || ''
-      }))
+      nearbyNetworks: rawNetworks,
+      currentNetwork: currentNetwork || null
     };
-
-    // For now, no currentNetwork auto-detect (can be added later); leave null or derive if needed by caller
-    normalized.currentNetwork = null;
 
     return normalized;
   } catch (error) {
-    console.error('WiFi scan failed:', error);
     throw error;
   }
 }

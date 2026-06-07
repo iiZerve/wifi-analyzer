@@ -1,0 +1,52 @@
+# Android
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Keystore & Release Secrets (CRITICAL - never commit)
+*.keystore
+*.jks
+wifi-analyzer-release.keystore
+RELEASE_STORE_*
+RELEASE_KEY_*
+
+# Node / Capacitor
+node_modules/
+npm-debug.log
+yarn-error.log
+dist/
+
+# NOTE: www/ is the webDir (Capacitor). We actively maintain and edit files here (index.html, js/),
+# so do NOT blanket-ignore the entire directory. If you have a separate source web folder
+# that builds into www/, add ignores for build artifacts only.
+# www/
+
+# Misc
+*.log
+.env
+.env.local
+
+# Play Store working files (optional)
+play-store-assets/*.psd
+play-store-assets/*.ai
+play-store-assets/working/
+
+# Root-level temporary / screenshot junk
+*.png
+!play-store-assets/*.png
+!www/assets/*.png
+!www/*.png
+!android/app/src/main/res/**/*.png
+!android/app/src/main/assets/public/assets/*.png

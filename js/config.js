@@ -4,7 +4,7 @@
 const WIFI_THRESHOLDS = {
   WEAK_SIGNAL_DBM: -70,           // Below this = weak signal warning
   VERY_WEAK_SIGNAL_DBM: -80,      // Critical weak
-  CONGESTION_THRESHOLD: 5,        // Number of strong networks on same channel to flag congestion
+  CONGESTION_THRESHOLD: 4,        // Lowered to trigger earlier
   STRONG_NETWORK_DBM: -60,        // dBm considered 'strong'
   MIN_5GHZ_SIGNAL_FOR_RECOMMEND: -65, // If 5GHz available and signal better than this, recommend switching from 2.4
 };

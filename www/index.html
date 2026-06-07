@@ -1,1 +1,783 @@
- the full prepared www/index.html with WiFi Analyzer title, inserted section, real logic (from the local after prepare) 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>WiFi Analyzer</title>
+  <style>
+    :root {
+      --bg: #121212;
+      --card-bg: #1e1e1e;
+      --accent: #4fc3f7;
+      --text: #fff;
+      --text-secondary: #888;
+      --pill-bg: #3a2a00;
+      --pill-text: #ffcc80;
+      --success: #4ade80;
+      --error: #f87171;
+    }
+
+    body { 
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+      background: linear-gradient(180deg, #0a1220 0%, #121212 55%, #121212 100%);
+      color: var(--text); 
+      padding: 16px; 
+      padding-top: calc(16px + env(safe-area-inset-top, 0px)); 
+      max-width: 960px; 
+      margin: 0 auto; 
+      line-height: 1.5;
+    }
+
+    @media (min-width: 600px) {
+      body { padding: 32px; padding-top: calc(32px + env(safe-area-inset-top, 0px)); font-size: 15px; }
+      .card { padding: 28px; border-radius: 18px; }
+      button { padding: 14px 24px; font-size: 16px; }
+      .health-score-value { font-size: 72px !important; }
+      #healthGauge { width: 280px; height: 280px; }
+    }
+
+    h1, h1.main-title {
+      color: #4fc3f7;
+      font-size: 28px;
+      margin: 0 0 16px 0;
+      text-align: center;
+      font-weight: 600;
+    }
+
+    .card { 
+      /* Completely transparent frames (no visible card background, border, or shadow) */
+      background: transparent;
+      border-radius: 14px; 
+      padding: 20px; 
+      margin-bottom: 20px; 
+    }
+
+    button { 
+      background: var(--accent); 
+      color: var(--bg); 
+      border: none; 
+      padding: 12px 20px; 
+      font-size: 15px; 
+      font-weight: 600; 
+      border-radius: 10px; 
+      cursor: pointer;
+      transition: opacity 0.1s;
+    }
+    button:active { opacity: 0.85; }
+    button.secondary { background: #333; color: #ccc; }
+
+    /* Cool, large, centered primary Scan button */
+    #scanBtn {
+      display: block;
+      margin: 4px auto 8px;
+      font-size: 18px;
+      font-weight: 700;
+      padding: 16px 52px;
+      border-radius: 999px;
+      background: linear-gradient(145deg, #5ed0ff 0%, #4fc3f7 100%);
+      color: #0a1220;
+      box-shadow: 0 6px 18px rgba(79, 195, 247, 0.4);
+      letter-spacing: 0.8px;
+      min-width: 220px;
+    }
+    #scanBtn:active {
+      transform: translateY(1px);
+      box-shadow: 0 3px 10px rgba(79, 195, 247, 0.35);
+      opacity: 0.95;
+    }
+
+    .health-score {
+      text-align: center;
+      margin-bottom: 12px;
+      padding: 4px 0 8px;
+    }
+    .health-score-label {
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-bottom: 0;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+    .health-score-value {
+      font-size: 72px;
+      font-weight: 900;
+      color: var(--accent);
+      line-height: 0.9;
+      margin: 0;
+    }
+    .health-score-sub {
+      font-size: 10px;
+      color: var(--text-secondary);
+      margin-top: 0;
+    }
+
+    /* Prominent always-visible Health Score frame - larger to fill card space */
+    #healthScoreSection {
+      padding-top: 14px;
+      padding-bottom: 14px;
+    }
+    #healthScoreSection .health-gauge-frame {
+      min-height: 168px;
+    }
+    #healthGauge {
+      width: 260px;
+      height: 260px;
+    }
+
+    .network-card {
+      background: transparent;
+      padding: 16px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      border-left: 4px solid var(--accent);
+    }
+    .network-title {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }
+    .network-ssid {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+    .network-details {
+      font-size: 13px;
+      color: #aaa;
+    }
+
+    .network-note {
+      background: #2a1f1f;
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+
+    .section-title {
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--text-secondary);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .issues-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .issue-pill {
+      background: var(--pill-bg);
+      color: var(--pill-text);
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 12px;
+      display: inline-block;
+    }
+
+    .recommendations-section .recommendation {
+      background: #252525;
+      padding: 12px 14px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      line-height: 1.4;
+      border-left: 3px solid var(--accent);
+    }
+
+    .last-scan {
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin: 8px 0 12px;
+    }
+    .last-scan .fresh { color: var(--success); font-weight: 600; }
+    .last-scan .stale { color: var(--error); font-weight: 600; }
+
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 16px 0;
+    }
+
+    .survey-result { background: transparent; padding: 12px; border-radius: 8px; margin-top: 12px; font-size: 13px; }
+    .guidance { background: #1f3a1f; padding: 8px 12px; border-radius: 6px; margin: 8px 0; font-size: 13px; }
+    .rogue { background: #2a1f1f; padding: 6px; border-radius: 6px; margin: 4px 0; font-size: 12px; }
+
+    .history-section {
+      margin-top: 20px;
+    }
+    .history-item {
+      background: transparent;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Cooler larger title with integrated app icon (icon-variant-2) -->
+  <div style="display: flex; align-items: center; justify-content: center; gap: 14px; margin: 0 0 12px 0; padding: 8px 0;">
+    <img src="wifi-icon.jpg" alt="WiFi" style="width: 52px; height: 52px; border-radius: 10px; box-shadow: 0 0 12px rgba(79, 195, 247, 0.6); object-fit: cover; flex-shrink: 0;">
+    <h1 style="font-size: 34px; font-weight: 700; margin: 0; letter-spacing: 1.5px; text-shadow: 0 0 10px rgba(79, 195, 247, 0.7), 0 0 20px rgba(79, 195, 247, 0.4); color: #4fc3f7; line-height: 1;">WiFi Analyzer</h1>
+  </div>
+
+  <!-- Health Score frame: now uses a high-tech futuristic circular HUD gauge matching the reference (neon glowing ring, industrial metal frame with bolts/struts, big centered percentage, HUD details). Number is drawn inside the gauge center like the reference. "Health Score" small label above. Hint at very bottom. -->
+  <div class="card" id="healthScoreSection">
+    <div style="text-align:center; padding: 8px 4px 4px;">
+      <div id="healthScoreLabel" style="font-size:13px; color:#4fc3f7; font-weight:600; letter-spacing:1px; margin-bottom:4px; text-transform:uppercase;">Health Score</div>
+      <canvas id="healthGauge" width="260" height="260" style="display:block; margin:0 auto;"></canvas>
+      <div id="healthScoreHint" style="font-size:11px; color:#666; margin-top:6px;">Perform Wifi Scan to see Health Score results</div>
+    </div>
+  </div>
+
+  <!-- Scan button moved underneath the gauge frame (per request) -->
+  <div class="card">
+    <button id="scanBtn">SCAN WIFI</button>
+    <div id="lastScanInfo" style="margin-top:8px; text-align:center; font-size:13px; color:#888;"></div>
+  </div>
+
+  <!-- Connected Devices (Device Detection / Network Discovery) -->
+  <div class="card" id="devicesSection">
+    <div class="section-title">Connected Devices</div>
+    <button id="discoverBtn" class="secondary" style="width:100%; margin-bottom:8px;">Discover Devices on Network</button>
+    <div id="routerLink" style="margin-bottom:8px; display:none;">
+      <button id="routerBtn" class="secondary" style="width:100%;">Open Router Settings</button>
+    </div>
+    <div id="devicesList" style="font-size:13px; min-height:20px;"></div>
+    <div id="devicesStatus" style="font-size:12px; color:#888; margin-top:6px;"></div>
+  </div>
+
+  <!-- Current Network -->
+  <div class="card" id="currentNetworkSection" style="display:none;">
+    <div class="section-title">Current Connection</div>
+    <!-- Populated dynamically -->
+  </div>
+
+  <!-- Environment Overview -->
+  <div class="card" id="environmentSection" style="display:none;">
+    <div class="section-title">Environment Overview</div>
+    <!-- Total networks, band split, etc. -->
+  </div>
+
+  <!-- Issues -->
+  <div class="card" id="issuesSection" style="display:none;">
+    <div class="section-title">Detected Issues</div>
+    <!-- Populated dynamically -->
+  </div>
+
+  <!-- Recommendations -->
+  <div class="card" id="recommendationsSection" style="display:none;">
+    <div class="section-title">Recommendations</div>
+    <!-- Populated dynamically -->
+  </div>
+
+  <!-- Survey Status -->
+  <div class="card" id="surveyStatus" style="display:none;">
+    <strong>Walking Survey active</strong> • Scans: <span id="surveyCount">0</span> • Moved: <span id="surveyMoved">no</span> (steps: <span id="surveySteps">0</span>)
+    <div id="surveyGuidance" class="guidance" style="display:none; margin-top:6px;"></div>
+  </div>
+
+  <!-- Survey Results -->
+  <div id="surveyResults" style="display:none;"></div>
+
+  <!-- Action Buttons -->
+  <div class="card">
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+      <button id="exportBtn" class="secondary" style="flex:1;">Export Report</button>
+      <button id="surveyBtn" class="secondary" style="flex:1;">Start Walking Survey</button>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="card">
+    <div class="section-title">Recent Scans</div>
+    <div id="historyArea"></div>
+  </div>
+
+  <script type="module">
+    // All imports must be at top level of the module
+    import { analyzeScan } from './js/wifi-analyzer.js';
+    import { saveScan, getScanHistory } from './js/wifi-storage.js';
+    import { renderScanResult, renderHistory, exportScanReport, startSurveyMode, stopSurveyMode, getSurveySamples, renderRogueList, renderRogueListInContainer, drawSpeedometer } from './js/ui-wifi.js';
+    import { scanWifi } from './js/wifi-scanner.js';
+    import { discoverDevices } from './js/network-discovery.js';
+
+    // Stabilize: wait for DOM and Capacitor bridge to be ready before any initialization
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('[UI] DOMContentLoaded fired - initializing app (Capacitor should be ready)');
+
+      let currentScan = null;
+      let currentAnalysis = null;
+      let surveyInterval = null;
+      let freshnessTimer = null;
+      let lastScanTs = null;
+
+      const resultArea = document.getElementById('resultArea');
+      const surveyResults = document.getElementById('surveyResults');
+      const scanBtn = document.getElementById('scanBtn');
+      const exportBtn = document.getElementById('exportBtn');
+      const surveyBtn = document.getElementById('surveyBtn');
+      const reportBtn = document.getElementById('reportBtn');
+      const lastScanInfo = document.getElementById('lastScanInfo');
+      const surveyStatus = document.getElementById('surveyStatus');
+      const surveyCountEl = document.getElementById('surveyCount');
+      const surveyMovedEl = document.getElementById('surveyMoved');
+      const surveyStepsEl = document.getElementById('surveySteps');
+      const surveyGuidanceEl = document.getElementById('surveyGuidance');
+      const rogueListEl = document.getElementById('rogueList');
+      const historyArea = document.getElementById('historyArea');
+
+      const discoverBtn = document.getElementById('discoverBtn');
+      const devicesListEl = document.getElementById('devicesList');
+      const devicesStatusEl = document.getElementById('devicesStatus');
+
+      function refreshHistory() {
+        try {
+          if (historyArea) renderHistory(historyArea, getScanHistory());
+        } catch (e) {
+          console.error('[UI] refreshHistory error:', e);
+        }
+      }
+
+      function updateFreshness() {
+        try {
+          if (!lastScanInfo) return;
+          if (!lastScanTs) {
+            lastScanInfo.textContent = 'Last scan: never';
+            return;
+          }
+          const age = Math.floor((Date.now() - lastScanTs) / 1000);
+          let cls = age < 30 ? 'fresh' : (age < 120 ? '' : 'stale');
+          const badge = age < 30 ? '(FRESH)' : (age < 120 ? '(RECENT)' : '(STALE)');
+          lastScanInfo.innerHTML = `Last scan: ${age}s ago <span class="${cls}">${badge}</span>`;
+        } catch (e) {
+          console.error('[UI] updateFreshness error:', e);
+        }
+      }
+
+      function startFreshnessTimer() {
+        try {
+          if (freshnessTimer) clearInterval(freshnessTimer);
+          freshnessTimer = setInterval(updateFreshness, 1000);
+        } catch (e) {
+          console.error('[UI] startFreshnessTimer error:', e);
+        }
+      }
+
+      async function doRealScan() {
+        console.log('[UI] doRealScan called - starting real scanWifi');
+        const originalScanText = scanBtn ? scanBtn.textContent : '';
+        if (scanBtn) {
+          scanBtn.textContent = 'Scanning...';
+          scanBtn.disabled = true;
+        }
+        const healthSection = document.getElementById('healthScoreSection');
+        const gauge = document.getElementById('healthGauge');
+        const hintEl = document.getElementById('healthScoreHint');
+        if (healthSection) {
+          // Keep frame always visible; indicate scanning via hint + empty gauge (number will be drawn inside by drawSpeedometer)
+          if (hintEl) hintEl.textContent = 'Scanning (real device)...';
+          if (gauge) {
+            drawSpeedometer(gauge, 0);
+          }
+        } else if (resultArea) {
+          resultArea.innerHTML = '<div style="color:#888; text-align:center; padding:20px;">Scanning (real device)...</div>';
+        }
+        try {
+          const real = await scanWifi();
+          console.log('[UI] scanWifi success, networks:', real.nearbyNetworks ? real.nearbyNetworks.length : 0, 'currentNetwork:', !!real.currentNetwork);
+          currentScan = real;
+          currentAnalysis = analyzeScan(real);
+
+          // Populate health gauge frame (always visible).
+          // Futuristic HUD gauge (number drawn *inside* the center of the canvas to match the reference image).
+          // "Health Score" small label above. Slow 1400ms fill animation.
+          const healthSection = document.getElementById('healthScoreSection');
+          const gauge = document.getElementById('healthGauge');
+          const hintEl = document.getElementById('healthScoreHint');
+          const labelEl = document.getElementById('healthScoreLabel');
+          if (healthSection && gauge) {
+            if (labelEl) labelEl.style.color = '#4fc3f7';
+            const target = currentAnalysis.healthScore || 0;
+            if (hintEl) hintEl.style.display = 'none';
+
+            // Slow cool fill (3x slower: 4200ms) - the drawSpeedometer now handles the big centered % inside the high-tech gauge
+            let currentProgress = 0;
+            const duration = 4200;
+            const startTime = Date.now();
+            const animateGauge = () => {
+              const elapsed = Date.now() - startTime;
+              const t = Math.min(elapsed / duration, 1);
+              currentProgress = target * (1 - Math.pow(1 - t, 3));
+              drawSpeedometer(gauge, currentProgress);
+              if (t < 1) {
+                requestAnimationFrame(animateGauge);
+              } else {
+                drawSpeedometer(gauge, target);
+              }
+            };
+            animateGauge();
+          } else if (healthSection) {
+            healthSection.style.display = 'block';
+          }
+
+          const currentSection = document.getElementById('currentNetworkSection');
+          if (currentSection && real.currentNetwork) {
+            currentSection.style.display = 'block';
+            const net = real.currentNetwork;
+            currentSection.innerHTML = `
+              <div class="section-title">Current Connection</div>
+              <div style="background:transparent; padding:16px; border-radius:12px;">
+                <div style="font-weight:700; font-size:18px;">${net.ssid}</div>
+                <div style="margin-top:8px; color:#aaa; font-size:14px; line-height:1.6;">
+                  ${net.band} GHz • Channel ${net.channel} (${net.channelWidth} MHz)<br>
+                  Signal: <strong>${net.signalStrength} dBm</strong><br>
+                  ${net.linkSpeed ? `Link Speed: <strong>${net.linkSpeed} Mbps</strong><br>` : ''}
+                  Security: <strong>${net.security}</strong>
+                </div>
+              </div>
+            `;
+          }
+
+          const envSection = document.getElementById('environmentSection');
+          if (envSection) {
+            envSection.style.display = 'block';
+            const total = real.totalNearbyNetworks || 0;
+            const split = real.bandSplit || { '2.4': 0, '5': 0, '6': 0 };
+            const cong = real.channelCongestionLevel || 'Low';
+            const onCh = real.networksOnCurrentChannel || 0;
+            envSection.innerHTML = `
+              <div class="section-title">Environment Overview</div>
+              <div style="color:#aaa;">${total} nearby networks detected<br>
+              ${split['2.4']} on 2.4 GHz • ${split['5'] + split['6']} on 5/6 GHz<br>
+              ${onCh} networks on your channel (${cong} congestion)</div>
+            `;
+          }
+
+          const issuesSection = document.getElementById('issuesSection');
+          if (issuesSection) {
+            issuesSection.style.display = 'block';
+            let ih = `<div class="section-title">Detected Issues (${currentAnalysis.issues.length})</div>`;
+            if (currentAnalysis.issues.length === 0) {
+              ih += `<div style="color:#81c784;">No major issues found</div>`;
+            } else {
+              currentAnalysis.issues.forEach(issue => {
+                ih += `<span style="background:#3a2a00; color:#ffcc80; padding:6px 12px; border-radius:20px; font-size:13px; margin:4px 6px 4px 0; display:inline-block;">${issue.replace(/_/g, ' ')}</span>`;
+              });
+            }
+            issuesSection.innerHTML = ih;
+          }
+
+          const recSection = document.getElementById('recommendationsSection');
+          if (recSection) {
+            recSection.style.display = 'block';
+            let rh = `<div class="section-title">Recommendations</div>`;
+            currentAnalysis.feedback.forEach(text => {
+              rh += `<div style="background:transparent; padding:14px; border-radius:10px; margin-bottom:10px; line-height:1.5;">${text}</div>`;
+            });
+            recSection.innerHTML = rh;
+          }
+
+          saveScan(real, currentAnalysis);
+
+          const rogues = currentAnalysis.rogues || [];
+          renderRogueList(rogueListEl, rogues);
+
+          refreshHistory();
+
+          lastScanTs = real.timestamp || Date.now();
+          updateFreshness();
+          startFreshnessTimer();
+        } catch (e) {
+          console.error('[UI] doRealScan error:', e);
+          resultArea.innerHTML = `<div style="color:#f87171; padding:10px; background:#2a1f1f; border-radius:8px;">Real scan error: ${e.message}<br><small>Check Logcat for details.</small></div>`;
+        } finally {
+          if (scanBtn) {
+            scanBtn.textContent = originalScanText;
+            scanBtn.disabled = false;
+          }
+        }
+      }
+
+      if (scanBtn) {
+        scanBtn.addEventListener('click', async () => {
+          console.log('[UI] Scan button clicked');
+          try {
+            await doRealScan();
+          } catch (e) {
+            console.error('[UI] Uncaught scan error:', e);
+            resultArea.innerHTML = `<div style="color:#f87171; padding:10px; background:#2a1f1f; border-radius:8px;">Scan failed: ${e.message}</div>`;
+          }
+        });
+      }
+
+      if (discoverBtn) {
+        discoverBtn.addEventListener('click', async () => {
+          console.log('[UI] Discover Devices button clicked');
+          const originalText = discoverBtn.textContent;
+          discoverBtn.textContent = 'Scanning...';
+          discoverBtn.disabled = true;
+          if (devicesListEl) devicesListEl.innerHTML = '';
+
+          // Progressive status to communicate the phases (Hostname Resolution + mDNS)
+          if (devicesStatusEl) devicesStatusEl.textContent = 'Scanning ARP table + ping sweep...';
+          // Small delay so the UI can paint the first message before the long native call
+          await new Promise(r => setTimeout(r, 60));
+
+          try {
+            // Phase 2: mDNS + hostname resolution happens inside the native call (blocks ~4-6s typically)
+            if (devicesStatusEl) devicesStatusEl.textContent = 'Running mDNS discovery + resolving hostnames...';
+
+            const discovery = await discoverDevices();
+            if (devicesStatusEl) {
+              devicesStatusEl.textContent = `Found ${discovery.count || 0} device(s) on ${discovery.subnet || 'local network'}`;
+            }
+            // Router quick link
+            const routerDiv = document.getElementById('routerLink');
+            const routerBtn = document.getElementById('routerBtn');
+            if (routerDiv && routerBtn && discovery.routerIp) {
+              routerDiv.style.display = 'block';
+              routerBtn.onclick = () => {
+                window.open(`http://${discovery.routerIp}`, '_blank');
+              };
+            } else if (routerDiv) {
+              routerDiv.style.display = 'none';
+            }
+            if (devicesListEl) {
+              if (!discovery.devices || discovery.devices.length === 0) {
+                devicesListEl.innerHTML = '<div style="color:#888;">No other devices found (ARP table empty or network restrictions). Try waking devices or disabling client isolation on your router.</div>';
+              } else {
+                let html = '';
+                discovery.devices.forEach(d => {
+                  const highlight = d.isCurrentDevice ? ' style="background:#1a2a1a; padding:4px; border-radius:4px;"' : '';
+                  // Prefer friendly hostname as the main label when we have one (from mDNS/SSDP/hostname resolution)
+                  const bestName = d.hostname && d.hostname !== d.ipAddress ? d.hostname : null;
+                  let line = `<div${highlight}>`;
+                  if (bestName) {
+                    line += `<strong style="color:#4fc3f7;">${bestName}</strong>`;
+                    line += ` <small style="color:#888;">${d.ipAddress}</small>`;
+                  } else {
+                    line += `<strong>${d.ipAddress}</strong>`;
+                  }
+                  if (d.macAddress && d.macAddress !== "N/A (self)") line += ` — ${d.macAddress}`;
+                  const methods = (d.detectionMethods || []).join(', ');
+                  line += ` <small style="color:#888;">[${methods || 'unknown'}]</small>`;
+                  // Show MAC vendor lookup result when available (or indicate Unknown for devices with MAC)
+                  if (d.macAddress && d.macAddress !== "N/A (self)") {
+                    const mfrLabel = (d.manufacturer && d.manufacturer !== "Unknown") ? d.manufacturer : "Unknown";
+                    line += ` <span style="color:#f59e0b; font-size:11px;">[${mfrLabel}]</span>`;
+                  }
+                  // Also show deviceType if known
+                  const dtype = (d.deviceType && d.deviceType !== "Unknown Device") ? d.deviceType : null;
+                  if (dtype) {
+                    line += ` <span style="color:#f59e0b; font-size:11px;">${dtype}</span>`;
+                  }
+                  if (d.confidence) line += ` <small>(${d.confidence})</small>`;
+                  if (d.isCurrentDevice) line += ' <strong>(this device)</strong>';
+                  line += '</div>';
+                  html += line;
+                });
+                devicesListEl.innerHTML = html;
+
+                // Add export button for device list (to Documents)
+                const exportBtn = document.createElement('button');
+                exportBtn.textContent = 'Export Device List (CSV to Documents)';
+                exportBtn.style.cssText = 'margin-top:8px; width:100%;';
+                exportBtn.onclick = async () => {
+                  let csv = 'IP,Hostname,MAC,Type,Method,IsCurrent\n';
+                  discovery.devices.forEach(d => {
+                    const methods = Array.isArray(d.detectionMethods) ? d.detectionMethods.join('|') : (d.detectionMethod || '');
+                    csv += `${d.ipAddress || ''},${d.hostname || ''},${d.macAddress || ''},${d.deviceType || ''},${methods},${d.isCurrentDevice}\n`;
+                  });
+                  const cap = window.Capacitor;
+                  if (cap && cap.Plugins && cap.Plugins.Filesystem) {
+                    try {
+                      await cap.Plugins.Filesystem.writeFile({
+                        path: `devices-${Date.now()}.csv`,
+                        data: csv,
+                        directory: 'DOCUMENTS',
+                        encoding: 'utf8'
+                      });
+                      alert('Device list exported to Documents');
+                    } catch(e) { alert('Export failed, using download'); downloadCSV(csv); }
+                  } else {
+                    downloadCSV(csv);
+                  }
+                };
+                devicesListEl.appendChild(exportBtn);
+
+                function downloadCSV(csv) {
+                  const blob = new Blob([csv], {type:'text/csv'});
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `devices-${Date.now()}.csv`;
+                  a.click();
+                }
+              }
+            }
+          } catch (e) {
+            console.error('[UI] Device discovery error:', e);
+            if (devicesStatusEl) devicesStatusEl.textContent = 'Discovery failed: ' + (e.message || e);
+            if (devicesListEl) devicesListEl.innerHTML = '<div style="color:#f87171;">' + (e.message || 'Error') + '</div>';
+          } finally {
+            discoverBtn.textContent = originalText;
+            discoverBtn.disabled = false;
+          }
+        });
+      }
+
+      if (exportBtn) {
+        exportBtn.addEventListener('click', async () => {
+          console.log('[UI] Export button clicked');
+          try {
+            if (currentScan && currentAnalysis) {
+              await exportScanReport(currentScan, currentAnalysis);
+            } else {
+              alert('Run a (real) scan first to export a report.');
+            }
+          } catch (e) {
+            console.error('[UI] Export error:', e);
+            resultArea.innerHTML = `<div style="color:#f87171; padding:10px; background:#2a1f1f; border-radius:8px;">Export failed: ${e.message}</div>`;
+          }
+        });
+      }
+
+      if (reportBtn) {
+        reportBtn.addEventListener('click', async () => {
+          console.log('[UI] Report button clicked');
+          try {
+            let text = '=== WiFi Analyzer Report (real data only) ===\n';
+            text += `Generated: ${new Date().toISOString()}\n\n`;
+            if (currentScan) {
+              text += `Networks found: ${currentScan.nearbyNetworks ? currentScan.nearbyNetworks.length : 0}\n`;
+              const rogues = currentAnalysis ? (currentAnalysis.rogues || []) : [];
+              if (rogues.length) text += `Suspicious opens: ${rogues.length} (High/Med/Low)\n`;
+            }
+            const samples = getSurveySamples ? getSurveySamples() : [];
+            if (samples.length) {
+              text += `\nLast Survey: ${samples.length} real scans\n`;
+            }
+            text += '\n(Full data in exports. All scans used real native WifiScannerPlugin + accelerometer.)\n';
+            text += '=== End Report ===\n';
+
+            resultArea.innerHTML = `<pre style="background:#111;padding:12px;white-space:pre-wrap;font-size:12px;">${text}</pre>`;
+            if (confirm('Report shown. Export detailed JSON now?')) {
+              if (currentScan && currentAnalysis) await exportScanReport(currentScan, currentAnalysis);
+            }
+          } catch (e) {
+            console.error('[UI] Report error:', e);
+            resultArea.innerHTML = `<div style="color:#f87171; padding:10px; background:#2a1f1f; border-radius:8px;">Report failed: ${e.message}</div>`;
+          }
+        });
+      }
+
+      if (surveyBtn) {
+        surveyBtn.addEventListener('click', async () => {
+          console.log('[UI] Survey button clicked, current state interval:', !!surveyInterval);
+          try {
+            if (surveyInterval || (surveyStatus.style.display !== 'none' && surveyStatus.style.display !== '')) {
+              console.log('[UI] Stopping survey');
+              const res = stopSurveyMode();
+              surveyInterval = null;
+              surveyBtn.textContent = 'Start Walking Survey';
+              surveyBtn.style.background = '#333';
+              if (surveyStatus) surveyStatus.style.display = 'none';
+              if (surveyGuidanceEl) surveyGuidanceEl.style.display = 'none';
+
+              surveyResults.innerHTML = `
+                <div class="survey-result">
+                  <strong>Walking Survey Complete (real data)</strong><br>
+                  Scans: <strong>${res.samples ? res.samples.length : 0}</strong><br>
+                  Duration: <strong>${res.duration || 0}s</strong><br>
+                  Suspicious opens seen: <strong>${(res.rogues || []).length}</strong><br>
+                  <pre style="font-size:11px;white-space:pre-wrap;margin-top:8px;">${res.summary || ''}</pre>
+                  <small style="color:#888;">All data from real device WiFi scans + accelerometer. No simulated data.</small>
+                </div>
+              `;
+              renderRogueList(rogueListEl, res.rogues || []);
+            } else {
+              console.log('[UI] Starting real walking survey (repeated real scans)');
+              surveyResults.innerHTML = '';
+              surveyBtn.textContent = 'Stop Walking Survey';
+              surveyBtn.style.background = '#c62828';
+              if (surveyStatus) surveyStatus.style.display = 'block';
+              if (surveyCountEl) surveyCountEl.textContent = '0';
+              if (surveyMovedEl) surveyMovedEl.textContent = 'no';
+              if (surveyStepsEl) surveyStepsEl.textContent = '0';
+              if (surveyGuidanceEl) surveyGuidanceEl.style.display = 'none';
+              if (rogueListEl) rogueListEl.innerHTML = '';
+
+              const onUpdate = (data) => {
+                if (data && data.summary) {
+                  console.log('[UI] Survey final summary received in onUpdate (handled in stop branch)');
+                  return;
+                }
+                const sample = data;
+                if (surveyCountEl) surveyCountEl.textContent = (parseInt(surveyCountEl.textContent) || 0) + 1;
+                if (sample.moved && surveyMovedEl) surveyMovedEl.textContent = 'yes';
+                if (surveyStepsEl) surveyStepsEl.textContent = (parseInt(surveyStepsEl.textContent) || 0) + (sample.stepDelta || 0);
+                if (sample.guidance && surveyGuidanceEl) {
+                  surveyGuidanceEl.style.display = 'block';
+                  surveyGuidanceEl.textContent = 'Guidance: ' + sample.guidance;
+                }
+                if (sample.analysis && sample.analysis.rogues) {
+                  renderRogueList(rogueListEl, sample.analysis.rogues);
+                }
+                // live result update removed for new section structure; status bar shows live data
+                lastScanTs = sample.timestamp || Date.now();
+                updateFreshness();
+              };
+
+              const state = await startSurveyMode(onUpdate);
+              surveyInterval = state.intervalId || true;
+            }
+          } catch (e) {
+            console.error('[UI] Survey error:', e);
+            resultArea.innerHTML = `<div style="color:#f87171; padding:10px; background:#2a1f1f; border-radius:8px;">Survey error: ${e.message}<br><small>See Logcat.</small></div>`;
+            surveyBtn.textContent = 'Start Walking Survey';
+            surveyBtn.style.background = '#333';
+            surveyStatus.style.display = 'none';
+          }
+        });
+      }
+
+      // initial - clean start, no "Last scan: never"
+      if (lastScanInfo) lastScanInfo.style.display = 'none';
+
+      // Initialize always-visible Health Score graphic frame with empty gauge + hint (number drawn inside canvas)
+      (function initHealthFrame() {
+        const gauge = document.getElementById('healthGauge');
+        const hintEl = document.getElementById('healthScoreHint');
+        const labelEl = document.getElementById('healthScoreLabel');
+        if (labelEl) labelEl.style.color = '#4fc3f7';
+        if (gauge) {
+          try { drawSpeedometer(gauge, 0); } catch(e) {}
+        }
+        if (hintEl) {
+          hintEl.style.display = '';
+          hintEl.textContent = 'Perform Wifi Scan to see Health Score results';
+        }
+      })();
+
+      refreshHistory();
+    });
+
+    // Fallback
+    window.addEventListener('load', () => {
+      console.log('[UI] window load fallback');
+    });
+  </script>
+</body>
+</html>

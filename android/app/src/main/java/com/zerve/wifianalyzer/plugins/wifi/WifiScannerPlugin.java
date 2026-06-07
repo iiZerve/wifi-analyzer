@@ -4,8 +4,11 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.net.wifi.ScanResult;
+import android.net.wifi.SupplicantState;
+import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.Build;
+import android.os.SystemClock;
 import android.util.Log;
 
 import androidx.core.app.ActivityCompat;
@@ -56,16 +59,7 @@ public class WifiScannerPlugin extends Plugin {
 
     /**
      * Main entry point from web: Capacitor.Plugins.WifiScanner.scanWifi()
-     * Returns:
-     * {
-     *   success: boolean,
-     *   error?: string,
-     *   message?: string,
-     *   scanStarted: boolean,
-     *   lastScanTimestamp: number (ms since epoch),
-     *   count: number,
-     *   networks: Array<{ ssid, bssid, signal, frequency, channel, channelWidth, capabilities }>
-     * }
+     * Returns rich real scan data + best-effort current connection info.
      */
     @PluginMethod
     public void scanWifi(PluginCall call) {
@@ -74,7 +68,6 @@ public class WifiScannerPlugin extends Plugin {
             return;
         }
 
-        // Robust permission check (ACCESS_FINE_LOCATION is mandatory for getScanResults on modern Android)
         if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
             JSObject ret = new JSObject();
@@ -85,11 +78,12 @@ public class WifiScannerPlugin extends Plugin {
             ret.put("lastScanTimestamp", System.currentTimeMillis());
             ret.put("count", 0);
             ret.put("networks", new JSArray());
+            ret.put("currentNetwork", null);
             call.resolve(ret);
             return;
         }
 
-        // Try to force a fresh scan. This call is best-effort and often throttled or ignored on Android 9+.
+        // Best-effort fresh scan. On many devices this is throttled (Android 9+).
         boolean scanStarted = false;
         try {
             scanStarted = wifiManager.startScan();
@@ -100,7 +94,14 @@ public class WifiScannerPlugin extends Plugin {
             Log.w(TAG, "startScan failed: " + e.getMessage());
         }
 
-        // Retrieve the latest results the system has (this is what actually gets delivered to apps)
+        // Give the system a moment to populate fresh results when startScan claimed success.
+        // Short delay helps on some devices; keep it small to avoid ANR risk (plugin call is off main thread).
+        if (scanStarted) {
+            try {
+                SystemClock.sleep(850);
+            } catch (Exception ignored) {}
+        }
+
         List<ScanResult> results;
         try {
             results = wifiManager.getScanResults();
@@ -121,22 +122,184 @@ public class WifiScannerPlugin extends Plugin {
         ret.put("count", results != null ? results.size() : 0);
 
         JSArray networks = new JSArray();
+        JSObject currentNetwork = null;
+
         if (results != null) {
+            // First, try to determine the currently connected network (reliable on Android 10+ with FINE_LOCATION).
+            currentNetwork = getCurrentConnectedNetwork(results);
+
             for (ScanResult r : results) {
                 JSObject net = new JSObject();
                 net.put("ssid", r.SSID != null ? r.SSID : "<hidden>");
                 net.put("bssid", r.BSSID != null ? r.BSSID : "");
-                net.put("signal", r.level);                 // dBm, e.g. -67
-                net.put("frequency", r.frequency);          // MHz
+                net.put("signal", r.level);
+                net.put("frequency", r.frequency);
                 net.put("channelWidth", r.channelWidth);
                 net.put("capabilities", r.capabilities != null ? r.capabilities : "");
                 net.put("channel", frequencyToChannel(r.frequency));
+                // Basic security classification for convenience (frontend can also re-derive)
+                net.put("security", classifySecurity(r.capabilities));
+                // Approximate band
+                net.put("band", frequencyToBand(r.frequency));
                 networks.put(net);
             }
         }
+
         ret.put("networks", networks);
+        ret.put("currentNetwork", currentNetwork);
 
         call.resolve(ret);
+    }
+
+    /**
+     * Dedicated method to retrieve just the current connection info (can be called independently).
+     */
+    @PluginMethod
+    public void getCurrentConnectedNetwork(PluginCall call) {
+        if (wifiManager == null) {
+            JSObject ret = new JSObject();
+            ret.put("success", false);
+            ret.put("currentNetwork", null);
+            call.resolve(ret);
+            return;
+        }
+        if (ActivityCompat.checkSelfPermission(getContext(), Manifest.permission.ACCESS_FINE_LOCATION)
+                != PackageManager.PERMISSION_GRANTED) {
+            JSObject ret = new JSObject();
+            ret.put("success", false);
+            ret.put("error", "LOCATION_PERMISSION_REQUIRED");
+            ret.put("currentNetwork", null);
+            call.resolve(ret);
+            return;
+        }
+
+        List<ScanResult> results = null;
+        try {
+            results = wifiManager.getScanResults();
+        } catch (Exception ignored) {}
+
+        JSObject current = getCurrentConnectedNetwork(results);
+        JSObject ret = new JSObject();
+        ret.put("success", current != null);
+        ret.put("currentNetwork", current);
+        ret.put("lastScanTimestamp", System.currentTimeMillis());
+        call.resolve(ret);
+    }
+
+    /**
+     * Best-effort detection of the currently connected WiFi network.
+     * Improved for Android 10+ (handles SSID redaction "<unknown ssid>" by using BSSID + scan results).
+     * Uses WifiInfo + matches against the provided scan results for fresh signal, frequency, etc.
+     * Returns a populated object whenever we have a solid connection indication (BSSID + good supplicant state).
+     */
+    private JSObject getCurrentConnectedNetwork(List<ScanResult> scanResults) {
+        if (wifiManager == null) return null;
+
+        WifiInfo info = null;
+        try {
+            info = wifiManager.getConnectionInfo();
+        } catch (Exception e) {
+            Log.w(TAG, "getConnectionInfo failed: " + e.getMessage());
+            return null;
+        }
+        if (info == null) return null;
+
+        String bssid = info.getBSSID();
+        String ssid = info.getSSID();
+        int ip = info.getIpAddress();
+        int linkSpeed = info.getLinkSpeed();
+        int rssiFromInfo = info.getRssi();
+        SupplicantState state = info.getSupplicantState();
+        int freqFromInfo = info.getFrequency();
+
+        Log.d(TAG, "WifiInfo details - SSID:" + ssid + " BSSID:" + bssid + " state:" + state + " rssi:" + rssiFromInfo + " linkSpeed:" + linkSpeed + " freq:" + freqFromInfo);
+
+        boolean hasValidBssid = (bssid != null && !bssid.isEmpty() && !"00:00:00:00:00:00".equals(bssid));
+        boolean goodState = (state == SupplicantState.COMPLETED || state == SupplicantState.ASSOCIATED || state == SupplicantState.FOUR_WAY_HANDSHAKE);
+
+        // Clean SSID
+        if (ssid != null) {
+            if (ssid.startsWith("\"") && ssid.endsWith("\"")) {
+                ssid = ssid.substring(1, ssid.length() - 1);
+            }
+            if ("<unknown ssid>".equalsIgnoreCase(ssid) || ssid.isEmpty() || "<unknown>".equalsIgnoreCase(ssid)) {
+                ssid = null;
+            }
+        }
+
+        // We consider it connected if we have a valid BSSID and reasonable supplicant state, or positive link speed (more reliable on some Android 10+ devices).
+        // This works even when Android redacts the SSID on 10+.
+        if (!hasValidBssid || !goodState) {
+            if (linkSpeed <= 0 && (ssid == null)) {
+                return null;
+            }
+        }
+
+        JSObject cur = new JSObject();
+        cur.put("ssid", ssid != null ? ssid : "<connected>");
+        cur.put("bssid", bssid != null ? bssid : "");
+        cur.put("signalStrength", rssiFromInfo);
+        cur.put("linkSpeed", linkSpeed);
+        cur.put("ipAddress", ip);
+        cur.put("supplicantState", state != null ? state.name() : "");
+        cur.put("isConnected", true);
+
+        // Best effort: enrich from the current scan results list (scan results usually have the real SSID + fresh RSSI)
+        boolean enriched = false;
+        if (scanResults != null && hasValidBssid) {
+            for (ScanResult r : scanResults) {
+                if (bssid.equalsIgnoreCase(r.BSSID)) {
+                    if (r.SSID != null && !r.SSID.isEmpty() && !"<hidden>".equals(r.SSID)) {
+                        cur.put("ssid", r.SSID);
+                    }
+                    cur.put("signalStrength", r.level);
+                    cur.put("frequency", r.frequency);
+                    cur.put("channel", frequencyToChannel(r.frequency));
+                    cur.put("channelWidth", r.channelWidth);
+                    cur.put("capabilities", r.capabilities != null ? r.capabilities : "");
+                    cur.put("security", classifySecurity(r.capabilities));
+                    cur.put("band", frequencyToBand(r.frequency));
+                    enriched = true;
+                    break;
+                }
+            }
+        }
+
+        // Fallbacks from WifiInfo if we didn't get everything from scan match
+        if (!enriched || !cur.has("frequency")) {
+            if (freqFromInfo > 0) {
+                cur.put("frequency", freqFromInfo);
+                cur.put("band", frequencyToBand(freqFromInfo));
+                cur.put("channel", frequencyToChannel(freqFromInfo));
+            }
+        }
+
+        // Final sanity: if signal is absurdly bad and we have no frequency info, don't claim connection
+        int finalSig = cur.has("signalStrength") ? cur.getInteger("signalStrength") : -127;
+        if (finalSig < -100 && !cur.has("frequency") && !cur.has("band")) {
+            // Still return it but mark signal as unknown — the UI can decide
+            cur.put("signalStrength", -99);
+        }
+
+        return cur;
+    }
+
+    private String classifySecurity(String capabilities) {
+        if (capabilities == null) return "Open";
+        String caps = capabilities.toUpperCase();
+        if (caps.contains("SAE") || caps.contains("WPA3")) return "WPA3";
+        if (caps.contains("WPA2") || caps.contains("RSN")) return "WPA2";
+        if (caps.contains("WPA")) return "WPA";
+        if (caps.contains("WEP")) return "WEP";
+        if (caps.contains("EAP") || caps.contains("802.1X")) return "Enterprise";
+        return "Open";
+    }
+
+    private String frequencyToBand(int freqMhz) {
+        if (freqMhz >= 2412 && freqMhz <= 2484) return "2.4";
+        if (freqMhz >= 5170 && freqMhz <= 5825) return "5";
+        if (freqMhz >= 5925 && freqMhz <= 7125) return "6";
+        return "unknown";
     }
 
     /**
